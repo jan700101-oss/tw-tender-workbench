@@ -1,0 +1,6 @@
+.cache/
+.tools/
+outputs/pcc-update.log
+*.tmp
+*.log
+
