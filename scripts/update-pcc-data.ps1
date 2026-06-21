@@ -12,6 +12,8 @@ $cacheDir = Join-Path $ProjectRoot ".cache\pcc"
 $docsDir = Join-Path $ProjectRoot "docs"
 $targetPath = Join-Path $outputDir "pcc-candidates.js"
 $publicTargetPath = Join-Path $docsDir "pcc-candidates.js"
+$indexPath = Join-Path $outputDir "index.html"
+$publicIndexPath = Join-Path $docsDir "index.html"
 $tempPath = Join-Path $outputDir "pcc-candidates.tmp.js"
 $logPath = Join-Path $outputDir "pcc-update.log"
 
@@ -83,6 +85,13 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "產生的候選資料檔未通過語法檢查。" }
   Move-Item -Force -Path $tempPath -Destination $targetPath
   Copy-Item -Force -Path $targetPath -Destination $publicTargetPath
+  $assetVersion = [datetime]::Now.ToString("yyyyMMddHHmm", [Globalization.CultureInfo]::InvariantCulture)
+  foreach ($htmlPath in @($indexPath, $publicIndexPath)) {
+    if (-not (Test-Path $htmlPath)) { continue }
+    $indexContent = [System.IO.File]::ReadAllText($htmlPath, [System.Text.Encoding]::UTF8)
+    $indexContent = [regex]::Replace($indexContent, 'pcc-candidates\.js(?:\?v=[^"'']+)?', "pcc-candidates.js?v=$assetVersion")
+    [System.IO.File]::WriteAllText($htmlPath, $indexContent, [System.Text.UTF8Encoding]::new($false))
+  }
   Write-Log "更新成功：$($deduped.Count) 筆工程候選，最新公告日 $latestDate。"
 } catch {
   if (Test-Path $tempPath) { Remove-Item -Force $tempPath }
