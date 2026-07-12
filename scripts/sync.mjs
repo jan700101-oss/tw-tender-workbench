@@ -40,7 +40,7 @@ const USER_AGENT = "tw-tender-workbench/1.0";
 
 const FETCH_TIMEOUT_MS = 60_000;
 const MAX_FILES_PER_RUN = 90;      // 官方目前提供 36 個月 × 2 檔;一次可全量補齊
-const REFRESH_RECENT_DAYS = 25;    // 期間結束日在此天數內的檔案每次都重抓(半月檔會持續增筆)
+const REFRESH_RECENT_DAYS = 60;    // 期間結束日在此天數內的檔案每次都重抓(官方半月檔約有 6 週發布延遲,且可能增補)
 
 const args = process.argv.slice(2);
 const fromDir = args.includes("--from-dir") ? args[args.indexOf("--from-dir") + 1] : null;
