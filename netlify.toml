@@ -1,0 +1,15 @@
+# Netlify 部署設定:純靜態網站,發布 docs/ 目錄,不需建置步驟
+[build]
+  publish = "docs"
+  command = ""
+
+# 資料檔要即時,不要被 CDN 久快取
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=60, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
