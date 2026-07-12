@@ -41,10 +41,12 @@
   };
 
   let meta = null;
+  let openMeta = null;
   const monthCache = new Map(); // "YYYY-MM" -> records[]
   let currentTab = "all";
   let shown = 0;
   let filtered = [];
+  let openTenders = [];
   let loadToken = 0;
 
   // ---------- 儲存(localStorage) ----------
@@ -113,6 +115,19 @@
   }
 
   function renderSyncStatus() {
+    if (openMeta) {
+      document.querySelector(".site-footer p").textContent = "首頁案源直接取自政府電子採購網『等標期內』查詢；只顯示截止投標日尚未到期的案件。地區依機關名稱與案名推定，投標前請再核對政府原始公告。";
+      els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆`;
+      const staleHours = (Date.now() - new Date(openMeta.generatedAt).getTime()) / 3600000;
+      if (staleHours > 36) {
+        els.banner.hidden = false;
+        els.banner.className = "sync-banner warn";
+        els.banner.textContent = "可投標案源超過 36 小時未更新，請先以政府電子採購網公告為準。";
+      } else {
+        els.banner.hidden = true;
+      }
+      return;
+    }
     const ok = meta.lastSuccess;
     const attempt = meta.lastAttempt;
     const failed = attempt && attempt.status !== "success";
@@ -166,7 +181,7 @@
     els.start.value = s.start || "";
     els.end.value = s.end || "";
     els.sort.value = s.sort || "period-desc";
-    els.open.checked = !!s.openOnly;
+    els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
   }
 
@@ -178,6 +193,8 @@
     let source;
     if (currentTab === "fav") {
       source = Object.values(favorites);
+    } else if (s.openOnly) {
+      source = openTenders;
     } else {
       const months = monthsForState(s);
       const missing = months.filter((m) => !monthCache.has(m));
@@ -234,6 +251,7 @@
 
   // ---------- 呈現 ----------
   function officialSearchUrl(r) {
+    if (r.officialUrl) return r.officialUrl;
     const p = new URLSearchParams({
       firstSearch: "true", searchType: "basic",
       tenderType: "TENDER_DECLARATION", tenderWay: "TENDER_WAY_ALL_DECLARATION",
@@ -291,9 +309,11 @@
           <span class="case-no">案號 <button class="copy" type="button" data-copy="${escapeHtml(r.caseNo)}" title="複製案號">${escapeHtml(r.caseNo)} ⧉</button></span>
         </div>
         <div class="card-links">
-          <button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>
+          ${r.officialUrl
+            ? `<a class="detail-trigger" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">查看官方完整詳情</a>`
+            : `<button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>`}
           <a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢</a>
-          <a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源檔 ${escapeHtml(r.sourceFile)}</a>
+          ${r.sourceFile?.endsWith(".xml") ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源檔 ${escapeHtml(r.sourceFile)}</a>` : ""}
         </div>`;
       frag.appendChild(li);
     }
@@ -432,6 +452,7 @@
           favBtn.setAttribute("aria-pressed", "false");
         } else {
           let rec = Object.values(favorites).find((r) => recordKey(r) === key);
+          if (!rec) rec = openTenders.find((r) => recordKey(r) === key);
           if (!rec) {
             for (const records of monthCache.values()) {
               rec = records.find((r) => recordKey(r) === key);
@@ -490,7 +511,11 @@
     bindEvents();
     renderSavedChips();
     try {
-      meta = await fetchJson("data/index.json");
+      [meta, openMeta] = await Promise.all([
+        fetchJson("data/index.json"),
+        fetchJson("data/open-tenders.json")
+      ]);
+      openTenders = openMeta.records || [];
       if (!meta.months || meta.months.length === 0) throw new Error("index 沒有月份資料");
     } catch (err) {
       showEmpty("資料尚未同步或載入失敗。請先執行一次同步(GitHub Actions「每日同步標案資料」),或稍後再試。");
@@ -500,7 +525,7 @@
     }
     populateFilterOptions();
     renderSyncStatus();
-    setFilterState({});
+    setFilterState({ openOnly: true, sort: "deadline-asc" });
     await applyFilters();
   }
 

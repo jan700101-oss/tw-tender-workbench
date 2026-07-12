@@ -1,0 +1,27 @@
+name: 同步目前可投標案件
+on:
+  schedule:
+    - cron: "15 0 * * 1-5"
+    - cron: "15 4 * * 1-5"
+    - cron: "15 9 * * 1-5"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sync-open-tenders
+  cancel-in-progress: true
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/sync-open-tenders.mjs
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/open-tenders.json
+          git diff --cached --quiet || (git commit -m "更新目前可投標案件" && git push)
