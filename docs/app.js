@@ -30,20 +30,17 @@ function applyFilters(resetPage = true) {
   const agency = normalize(els.agency.value);
   const region = els.region.value;
   const category = els.category.value;
-  const method = els.method.value;
-  const status = els.status.value;
+  const announcementType = els.announcementType.value;
   state.filtered = state.records.filter((record) => {
     const haystack = normalize(`${record.title} ${record.agency} ${record.caseNo}`);
     if (tokens.some((token) => !haystack.includes(token))) return false;
     if (agency && !normalize(record.agency).includes(agency)) return false;
     if (region && record.region !== region) return false;
     if (category && record.category !== category) return false;
-    if (method && record.method !== method) return false;
-    if (status === "open" && !["open", "urgent"].includes(dateStatus(record.deadline).kind)) return false;
-    if (status === "closed" && dateStatus(record.deadline).kind !== "closed") return false;
+    if (announcementType && record.announcementType !== announcementType) return false;
     return true;
   });
-  state.filtered.sort((a, b) => b.deadline.localeCompare(a.deadline) || collator.compare(a.agency, b.agency));
+  state.filtered.sort((a, b) => b.announcementDate.localeCompare(a.announcementDate) || collator.compare(a.agency, b.agency));
   if (resetPage) state.page = 1;
   render();
 }
@@ -56,13 +53,12 @@ function render() {
   els.resultCount.textContent = `找到 ${state.filtered.length.toLocaleString("zh-TW")} 筆`;
   els.range.textContent = state.filtered.length ? `顯示第 ${start + 1}–${Math.min(start + rows.length, state.filtered.length)} 筆` : "請調整搜尋條件";
   els.results.innerHTML = rows.length ? rows.map((record) => {
-    const status = dateStatus(record.deadline);
     return `<article class="tender-card">
-      <div class="card-top"><span class="tag">${escapeHtml(record.category || "未分類")}</span><span class="status ${status.kind}">${status.label}</span></div>
+      <div class="card-top"><span class="tag">${escapeHtml(record.category || "未分類")}</span><span class="status open">${escapeHtml(record.announcementType)}</span></div>
       <h2>${escapeHtml(record.title)}</h2>
       <p class="agency">${escapeHtml(record.agency)} · ${escapeHtml(record.region)}</p>
-      <dl><div><dt>案號</dt><dd>${escapeHtml(record.caseNo)}</dd></div><div><dt>招標方式</dt><dd>${escapeHtml(record.method || "未提供")}</dd></div><div><dt>截止投標</dt><dd>${escapeHtml(record.deadline || "未提供")}</dd></div><div><dt>官方資料期間</dt><dd>${escapeHtml(record.sourcePeriod)}</dd></div></dl>
-      <a class="official" href="${escapeHtml(record.officialUrl)}" target="_blank" rel="noopener noreferrer">到政府網站查看此案 <span aria-hidden="true">↗</span></a>
+      <dl><div><dt>案號</dt><dd>${escapeHtml(record.caseNo)}</dd></div><div><dt>公告日期</dt><dd>${escapeHtml(record.announcementDate)}</dd></div><div><dt>詳細分類</dt><dd>${escapeHtml(record.categoryDetail || record.category)}</dd></div></dl>
+      <a class="official" href="${escapeHtml(record.apiSourceUrl || record.officialUrl)}" target="_blank" rel="noopener noreferrer">查看公告詳情 <span aria-hidden="true">↗</span></a>
     </article>`;
   }).join("") : `<div class="empty"><strong>沒有符合的標案</strong><span>可以減少關鍵字，或清除部分篩選條件。</span></div>`;
   els.prev.disabled = state.page <= 1;
@@ -71,7 +67,7 @@ function render() {
 }
 
 function saveSearch() {
-  const saved = { query: els.query.value, agency: els.agency.value, region: els.region.value, category: els.category.value, method: els.method.value, status: els.status.value };
+  const saved = { query: els.query.value, agency: els.agency.value, region: els.region.value, category: els.category.value, announcementType: els.announcementType.value };
   localStorage.setItem("tw-tender-search", JSON.stringify(saved));
   els.saveStatus.textContent = "已儲存目前條件";
   setTimeout(() => { els.saveStatus.textContent = ""; }, 1800);
@@ -86,10 +82,10 @@ async function start() {
     state.meta = payload.meta;
     populateSelect("region", [...new Set(state.records.map((row) => row.region).filter(Boolean))].sort((a, b) => a === "地區未明" ? 1 : b === "地區未明" ? -1 : collator.compare(a, b)), "所有地區");
     populateSelect("category", [...new Set(state.records.map((row) => row.category).filter(Boolean))].sort(collator.compare), "所有採購類別");
-    populateSelect("method", [...new Set(state.records.map((row) => row.method).filter(Boolean))].sort(collator.compare), "所有招標方式");
+    populateSelect("announcementType", [...new Set(state.records.map((row) => row.announcementType).filter(Boolean))].sort(collator.compare), "所有公告類型");
     const saved = JSON.parse(localStorage.getItem("tw-tender-search") || "null");
     if (saved) for (const [key, value] of Object.entries(saved)) if (els[key]) els[key].value = value;
-    els.syncSummary.textContent = `${payload.meta.recordCount.toLocaleString("zh-TW")} 筆｜官方最新資料：${payload.meta.officialLatestPeriod}｜涵蓋近 ${payload.meta.historyMonths} 個月`;
+    els.syncSummary.textContent = `${payload.meta.recordCount.toLocaleString("zh-TW")} 則公告｜最新：${payload.meta.latestAnnouncementDate}｜近 ${payload.meta.historyDays} 天`;
     els.syncTime.textContent = `本站更新：${new Date(payload.meta.syncedAt).toLocaleString("zh-TW", { hour12: false })}`;
     applyFilters();
   } catch (error) {
