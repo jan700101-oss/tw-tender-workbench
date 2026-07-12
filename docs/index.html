@@ -1,44 +1,99 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant-TW">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="更容易使用的台灣政府標案搜尋工具">
-  <title>標案快搜｜台灣政府招標搜尋</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23176b4d'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white'%3E%E6%A8%99%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./styles.css">
-  <style>@media (min-width:801px){.filters-row{grid-template-columns:1.2fr .8fr 1fr 1fr .8fr}}</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>標案工務台 — 政府標案搜尋</title>
+<meta name="description" content="臺灣政府採購標案搜尋:每日同步政府電子採購網公開資料,可搜尋、篩選、收藏。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="./"><span class="brand-mark">標</span><span>標案快搜<small>政府公開資料搜尋</small></span></a>
-    <a class="source-link" href="https://web.pcc.gov.tw/tps/tp/OpenData/showList" target="_blank" rel="noopener noreferrer">官方資料來源 ↗</a>
-  </header>
-  <main>
-    <section class="hero">
-      <div><p class="eyebrow">TAIWAN TENDER SEARCH</p><h1>政府標案，<em>簡單搜尋。</em></h1><p>輸入案名、案號或機關，不用再跟政府網站複雜的查詢畫面搏鬥。</p></div>
-      <aside class="sync-card"><span>資料狀態</span><strong id="syncSummary">正在載入官方資料…</strong><small id="syncTime"></small></aside>
-    </section>
+<header class="site-header">
+  <div class="wrap">
+    <h1>標案工務台</h1>
+    <p class="tagline">政府標案搜尋 · 資料來自<a href="https://web.pcc.gov.tw/tps/tp/OpenData/showList" target="_blank" rel="noopener">政府電子採購網公開資料</a></p>
+  </div>
+</header>
 
-    <section class="search-panel" aria-label="標案搜尋">
-      <form id="filters">
-        <label class="main-search"><span>關鍵字、案號或機關</span><div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg><input id="query" type="search" placeholder="例如：室內裝修、台電、A115001" autocomplete="off"><button type="submit">搜尋標案</button></div></label>
-        <div class="filters-row">
-          <label><span>機關名稱</span><input id="agency" type="search" placeholder="輸入部分名稱即可"></label>
-          <label><span>地區</span><select id="region"><option value="">所有地區</option></select></label>
-          <label><span>採購類別</span><select id="category"><option value="">所有採購類別</option></select></label>
-          <label><span>公告類型</span><select id="announcementType"><option value="">所有公告類型</option></select></label>
-        </div>
-        <div class="form-actions"><button id="clear" type="button" class="quiet">清除條件</button><button id="save" type="button" class="quiet">儲存目前條件</button><span id="saveStatus" role="status"></span></div>
-      </form>
-    </section>
+<div class="wrap">
+  <div id="sync-banner" class="sync-banner" hidden></div>
 
-    <section class="result-head"><div><p id="resultCount">載入中</p><span id="range"></span></div><label>每頁顯示 <select id="pageSize"><option>25</option><option>50</option><option>100</option></select></label></section>
-    <section id="results" class="results" aria-live="polite"><div id="loading" class="empty"><strong>正在準備標案資料</strong><span>第一次載入可能需要幾秒鐘。</span></div></section>
-    <nav class="pagination" aria-label="搜尋結果分頁"><button id="prev" disabled>上一頁</button><span id="pageInfo">第 1 / 1 頁</span><button id="next" disabled>下一頁</button></nav>
-    <section class="notice"><strong>資料說明</strong><p>本站逐日收錄政府電子採購網公告，包含招標、決標、無法決標、公開取得、公開徵求及公開閱覽等類型。資料由 openfunltd 標案資料 API 彙整；詳細內容與最新更正仍以政府電子採購網單案頁為準。</p></section>
-  </main>
-  <footer>標案快搜 · 原始資料：行政院公共工程委員會政府電子採購網 · API：openfunltd</footer>
-  <script src="./app.js" defer></script>
+  <section class="controls" aria-label="搜尋與篩選">
+    <div class="row">
+      <input id="q" type="search" placeholder="搜尋案名、案號、機關(空白分隔多個關鍵字,前面加 - 可排除)" autocomplete="off">
+    </div>
+    <div class="row filters">
+      <div class="field">
+        <label for="f-attr">類別</label>
+        <select id="f-attr"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label for="f-method">招標方式</label>
+        <select id="f-method"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label for="f-region">地區(推定)</label>
+        <select id="f-region"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label for="f-agency">機關</label>
+        <input id="f-agency" type="search" placeholder="機關名稱關鍵字" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-range">公告期間</label>
+        <select id="f-range">
+          <option value="3">近 3 個月</option>
+          <option value="6">近 6 個月</option>
+          <option value="12">近 12 個月</option>
+          <option value="all">全部歷史</option>
+          <option value="custom">自訂範圍</option>
+        </select>
+      </div>
+      <div class="field custom-dates" id="custom-dates" hidden>
+        <label for="f-start">起</label>
+        <input id="f-start" type="date">
+        <label for="f-end">迄</label>
+        <input id="f-end" type="date">
+      </div>
+      <div class="field">
+        <label for="f-sort">排序</label>
+        <select id="f-sort">
+          <option value="period-desc">公告期間:新 → 舊</option>
+          <option value="deadline-asc">截止日:近 → 遠</option>
+        </select>
+      </div>
+      <label class="check"><input id="f-open" type="checkbox">僅顯示尚未截止</label>
+    </div>
+    <div class="row saved">
+      <button id="btn-save-search" class="btn" type="button">儲存目前條件</button>
+      <button id="btn-clear" class="btn subtle" type="button">清除條件</button>
+      <div id="saved-chips" class="chips"></div>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button id="tab-all" class="tab active" role="tab" aria-selected="true" type="button">全部結果</button>
+    <button id="tab-fav" class="tab" role="tab" aria-selected="false" type="button">★ 我的收藏 <span id="fav-count"></span></button>
+  </nav>
+
+  <p id="result-count" class="result-count" role="status"></p>
+  <ul id="results" class="results"></ul>
+  <div class="load-more-wrap"><button id="btn-more" class="btn" type="button" hidden>載入更多</button></div>
+
+  <section id="empty-state" class="empty-state" hidden></section>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>資料每日自動同步自政府電子採購網公開半月檔 XML(每月兩檔:1–15 日、16 日–月底)。
+       此公開資料集為官方提供之<strong>部分標案</strong>,並非全部公告;截止投標日為官方 TENDER_SPDT 欄位;
+       地區為依機關名稱與案名文字推定,僅供篩選參考。
+       投標前請以<a href="https://web.pcc.gov.tw/" target="_blank" rel="noopener">政府電子採購網</a>正式公告為準。</p>
+    <p id="footer-sync"></p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
 </body>
 </html>
