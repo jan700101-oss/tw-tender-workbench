@@ -7,7 +7,11 @@
   <title>標案快搜｜台灣政府招標搜尋</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23176b4d'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white'%3E%E6%A8%99%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
-  <style>@media (min-width:801px){.filters-row{grid-template-columns:1.2fr .8fr 1fr 1fr .8fr}}</style>
+  <style>
+    @media (min-width:801px){.filters-row{grid-template-columns:1.2fr .8fr 1fr 1fr}}
+    dialog{width:min(860px,calc(100% - 28px));max-height:90vh;border:0;border-radius:20px;padding:0;box-shadow:0 30px 90px #10251b55}dialog::backdrop{background:#10251b99;backdrop-filter:blur(3px)}.detail-shell{padding:28px}.detail-head{display:flex;justify-content:space-between;gap:20px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:18px}.detail-head h2{margin:5px 0;font-size:24px;line-height:1.4}.detail-head p{margin:0;color:var(--green);font-weight:700}.dialog-close{border:1px solid var(--line);background:white;border-radius:99px;width:38px;height:38px;cursor:pointer;font-size:22px}.detail-status{padding:35px;text-align:center;color:var(--muted)}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.detail-field{background:var(--paper);border-radius:11px;padding:12px 14px}.detail-field.wide{grid-column:1/-1}.detail-field span{display:block;color:var(--muted);font-size:12px}.detail-field strong{display:block;margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere}.detail-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}.detail-links a{background:var(--green);color:#fff;text-decoration:none;border-radius:9px;padding:10px 15px;font-weight:800}.detail-links a.secondary{background:#e7efe9;color:var(--green)}@media(max-width:600px){.detail-shell{padding:20px}.detail-grid{grid-template-columns:1fr}.detail-field.wide{grid-column:auto}}
+    .detail-button{border:0;background:transparent;cursor:pointer}.detail-button:hover{text-decoration:underline}
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -35,6 +39,7 @@
 
     <section class="result-head"><div><p id="resultCount">載入中</p><span id="range"></span></div><label>每頁顯示 <select id="pageSize"><option>25</option><option>50</option><option>100</option></select></label></section>
     <section id="results" class="results" aria-live="polite"><div id="loading" class="empty"><strong>正在準備標案資料</strong><span>第一次載入可能需要幾秒鐘。</span></div></section>
+    <dialog id="detailDialog"><div id="detailContent" class="detail-status">正在載入公告詳情…</div></dialog>
     <nav class="pagination" aria-label="搜尋結果分頁"><button id="prev" disabled>上一頁</button><span id="pageInfo">第 1 / 1 頁</span><button id="next" disabled>下一頁</button></nav>
     <section class="notice"><strong>資料說明</strong><p>本站逐日收錄政府電子採購網公告，包含招標、決標、無法決標、公開取得、公開徵求及公開閱覽等類型。資料由 openfunltd 標案資料 API 彙整；詳細內容與最新更正仍以政府電子採購網單案頁為準。</p></section>
   </main>

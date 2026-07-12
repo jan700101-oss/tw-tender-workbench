@@ -62,6 +62,7 @@ const records = batches.flatMap((payload) => payload.records || []).map((row) =>
   const caseNo = row.job_number || "未提供";
   return {
     id: row.filename || `${row.date}:${row.unit_id}:${caseNo}:${title}`,
+    unitId: row.unit_id || "", sourceFilename: row.filename || "",
     title, agency, caseNo, category, categoryDetail: categoryText,
     announcementType: row.brief?.type || "其他公告",
     announcementDate,
