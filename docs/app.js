@@ -1,15 +1,15 @@
 /* 標案工務台 — 前端搜尋
  * 資料由 scripts/sync.mjs 產出於 docs/data/:
- *   index.json          同步狀態、月份清單、篩選選項
- *   tenders-YYYY-MM.json 各公告月份的標案(緊湊陣列格式)
- * 所有欄位皆來自政府公開 XML,不做推測性欄位。
+ *   index.json           同步狀態、月份清單、篩選選項
+ *   tenders-YYYY-MM.json 依公告期間月份分片(緊湊陣列格式)
+ * 月份檔依查詢範圍延遲載入;所有欄位語意見 index.json 的 notes。
  */
 (() => {
   "use strict";
 
   const PAGE_SIZE = 100;
-  const FAV_KEY = "twb.favorites.v1";
-  const SEARCH_KEY = "twb.savedSearches.v1";
+  const FAV_KEY = "twb.favorites.v2";
+  const SEARCH_KEY = "twb.savedSearches.v2";
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -17,6 +17,7 @@
     q: $("q"),
     attr: $("f-attr"),
     method: $("f-method"),
+    region: $("f-region"),
     agency: $("f-agency"),
     range: $("f-range"),
     customDates: $("custom-dates"),
@@ -37,11 +38,12 @@
     footerSync: $("footer-sync"),
   };
 
-  let allRecords = [];
   let meta = null;
+  const monthCache = new Map(); // "YYYY-MM" -> records[]
   let currentTab = "all";
   let shown = 0;
   let filtered = [];
+  let loadToken = 0;
 
   // ---------- 儲存(localStorage) ----------
   function loadJson(key, fallback) {
@@ -53,11 +55,11 @@
   function saveJson(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* 隱私模式可能失敗 */ }
   }
-  let favorites = loadJson(FAV_KEY, {});   // key -> record
+  let favorites = loadJson(FAV_KEY, {});        // key -> record
   let savedSearches = loadJson(SEARCH_KEY, []); // [{name, state}]
 
   function recordKey(r) {
-    return [r.kind, r.announceDate, r.agency, r.caseNo, r.title].join("|");
+    return [r.kind, r.periodStart, r.agency, r.caseNo, r.title].join("|");
   }
 
   // ---------- 資料載入 ----------
@@ -73,46 +75,53 @@
     return r;
   }
 
-  async function loadData() {
-    meta = await fetchJson("data/index.json");
-    const months = (meta.months || []).map((m) => m.month);
-    const parts = await Promise.all(
-      months.map((m) => fetchJson(`data/tenders-${m}.json`).catch(() => null))
-    );
-    const records = [];
-    for (const part of parts) {
-      if (!part || !part.rows) continue;
-      for (const row of part.rows) records.push(fromRow(part.columns, row));
+  async function loadMonth(month) {
+    if (monthCache.has(month)) return monthCache.get(month);
+    try {
+      const part = await fetchJson(`data/tenders-${month}.json`);
+      const records = (part.rows || []).map((row) => fromRow(part.columns, row));
+      monthCache.set(month, records);
+      return records;
+    } catch {
+      monthCache.set(month, []);
+      return [];
     }
-    allRecords = records;
+  }
+
+  /** 依目前期間條件決定需要的月份 */
+  function monthsForState(s) {
+    const available = (meta.months || []).map((m) => m.month).sort().reverse(); // 新→舊
+    if (s.range === "custom") {
+      const from = (s.start || "0000-01").slice(0, 7);
+      const to = (s.end || "9999-12").slice(0, 7);
+      return available.filter((m) => m >= from && m <= to);
+    }
+    if (s.range === "all") return available;
+    const n = parseInt(s.range, 10); // 月數
+    return available.slice(0, n);
   }
 
   // ---------- 同步狀態 ----------
   function fmtTime(iso) {
     if (!iso) return "—";
-    const d = new Date(iso);
     return new Intl.DateTimeFormat("zh-TW", {
       timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit",
-    }).format(d);
+    }).format(new Date(iso));
   }
 
   function renderSyncStatus() {
-    const ok = meta && meta.lastSuccess;
-    const attempt = meta && meta.lastAttempt;
-    const failedAfterSuccess = attempt && attempt.status !== "success";
+    const ok = meta.lastSuccess;
+    const attempt = meta.lastAttempt;
+    const failed = attempt && attempt.status !== "success";
     let staleDays = null;
-    if (ok) {
-      staleDays = Math.floor((Date.now() - new Date(ok.at).getTime()) / 86400000);
-    }
-    const bits = [];
-    if (ok) {
-      bits.push(`最後成功同步:${fmtTime(ok.at)}(台北時間)`);
-      bits.push(`資料 ${ok.totalRecords} 筆,涵蓋 ${ok.cutoff} 起的公告`);
-    }
-    els.footerSync.textContent = bits.join(" · ");
+    if (ok) staleDays = Math.floor((Date.now() - new Date(ok.at).getTime()) / 86400000);
 
-    if (failedAfterSuccess) {
+    if (ok) {
+      els.footerSync.textContent =
+        `最後成功同步:${fmtTime(ok.at)}(台北時間) · 共 ${ok.totalRecords} 筆 · 涵蓋 ${meta.months.length} 個月份`;
+    }
+    if (failed) {
       els.banner.hidden = false;
       els.banner.className = "sync-banner warn";
       els.banner.textContent = `⚠ 最近一次同步失敗(${fmtTime(attempt.at)}):${attempt.error || "未知錯誤"}。目前顯示上一版資料。`;
@@ -135,6 +144,7 @@
       q: els.q.value.trim(),
       attr: els.attr.value,
       method: els.method.value,
+      region: els.region.value,
       agency: els.agency.value.trim(),
       range: els.range.value,
       start: els.start.value,
@@ -148,40 +158,50 @@
     els.q.value = s.q || "";
     els.attr.value = s.attr || "";
     els.method.value = s.method || "";
+    els.region.value = s.region || "";
     els.agency.value = s.agency || "";
-    els.range.value = s.range || "all";
+    els.range.value = s.range || "3";
     els.start.value = s.start || "";
     els.end.value = s.end || "";
-    els.sort.value = s.sort || "announce-desc";
+    els.sort.value = s.sort || "period-desc";
     els.open.checked = !!s.openOnly;
     els.customDates.hidden = els.range.value !== "custom";
   }
 
-  function applyFilters() {
+  async function applyFilters() {
+    const token = ++loadToken;
     const s = getFilterState();
     const today = todayIso();
+
+    let source;
+    if (currentTab === "fav") {
+      source = Object.values(favorites);
+    } else {
+      const months = monthsForState(s);
+      const missing = months.filter((m) => !monthCache.has(m));
+      if (missing.length) {
+        els.count.textContent = "載入資料中…";
+        await Promise.all(missing.map(loadMonth));
+        if (token !== loadToken) return; // 已有更新的查詢
+      }
+      source = [];
+      for (const m of months) source.push(...(monthCache.get(m) || []));
+    }
+
     const terms = s.q.split(/\s+/).filter(Boolean);
     const include = terms.filter((t) => !t.startsWith("-")).map((t) => t.toLowerCase());
     const exclude = terms.filter((t) => t.startsWith("-") && t.length > 1).map((t) => t.slice(1).toLowerCase());
     const agencyQ = s.agency.toLowerCase();
+    const minDate = s.range === "custom" ? (s.start || null) : null;
+    const maxDate = s.range === "custom" ? (s.end || null) : null;
 
-    let minDate = null, maxDate = null;
-    if (s.range === "custom") {
-      minDate = s.start || null;
-      maxDate = s.end || null;
-    } else if (s.range !== "all") {
-      const d = new Date(`${today}T00:00:00Z`);
-      d.setUTCDate(d.getUTCDate() - parseInt(s.range, 10));
-      minDate = d.toISOString().slice(0, 10);
-    }
-
-    const source = currentTab === "fav" ? Object.values(favorites) : allRecords;
     filtered = source.filter((r) => {
       if (s.attr && r.attr !== s.attr) return false;
       if (s.method && r.method !== s.method) return false;
+      if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
-      if (minDate && r.announceDate < minDate) return false;
-      if (maxDate && r.announceDate > maxDate) return false;
+      if (minDate && r.periodEnd < minDate) return false;
+      if (maxDate && r.periodStart > maxDate) return false;
       if (s.openOnly && !(r.deadline && r.deadline >= today)) return false;
       if (include.length || exclude.length) {
         const hay = `${r.title} ${r.caseNo} ${r.agency}`.toLowerCase();
@@ -193,13 +213,15 @@
 
     if (s.sort === "deadline-asc") {
       filtered.sort((a, b) => {
-        if (!a.deadline && !b.deadline) return a.announceDate < b.announceDate ? 1 : -1;
+        if (!a.deadline && !b.deadline) return a.periodStart < b.periodStart ? 1 : -1;
         if (!a.deadline) return 1;
         if (!b.deadline) return -1;
         return a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : 0;
       });
     } else {
-      filtered.sort((a, b) => (a.announceDate < b.announceDate ? 1 : a.announceDate > b.announceDate ? -1 : 0));
+      filtered.sort((a, b) =>
+        a.periodStart < b.periodStart ? 1 : a.periodStart > b.periodStart ? -1 :
+        (a.deadline || "") < (b.deadline || "") ? -1 : 1);
     }
 
     shown = 0;
@@ -210,21 +232,22 @@
 
   // ---------- 呈現 ----------
   function officialSearchUrl(r) {
-    // 政府電子採購網招標查詢,以案號與公告日期預填
-    const d = r.announceDate.replace(/-/g, "/");
     const p = new URLSearchParams({
-      firstSearch: "true", searchType: "basic", isBinding: "N", isLogIn: "N",
-      level_1: "on", orgName: "", orgId: "", tenderName: "",
-      tenderId: r.caseNo,
+      firstSearch: "true", searchType: "basic",
       tenderType: "TENDER_DECLARATION", tenderWay: "TENDER_WAY_ALL_DECLARATION",
-      dateType: "isDate", tenderStartDate: d, tenderEndDate: d,
-      radProctrgCate: "", pageSize: "50",
+      dateType: "isDate", tenderId: r.caseNo,
     });
     return `https://web.pcc.gov.tw/prkms/tender/common/basic/readTenderBasic?${p}`;
   }
 
   function sourceFileUrl(r) {
     return `https://web.pcc.gov.tw/tps/tp/OpenData/downloadFile?fileName=${encodeURIComponent(r.sourceFile)}`;
+  }
+
+  function periodLabel(r) {
+    const [y, m, d1] = r.periodStart.split("-");
+    const d2 = r.periodEnd.split("-")[2];
+    return `${y}/${m}/${Number(d1)}–${Number(d2)}`;
   }
 
   function deadlineBadge(r, today) {
@@ -247,6 +270,8 @@
       const key = recordKey(r);
       const li = document.createElement("li");
       li.className = "card";
+      const regionBadge = r.region && r.region !== "地區未明"
+        ? `<span class="badge">${escapeHtml(r.region)}(推定)</span>` : "";
       li.innerHTML = `
         <div class="card-head">
           <a class="title" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
@@ -255,7 +280,8 @@
         <div class="card-meta">
           <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
           <span class="badge">${escapeHtml(r.method || "—")}</span>
-          <span class="badge announce">公告 ${r.announceDate}</span>
+          ${regionBadge}
+          <span class="badge announce">公告期間 ${periodLabel(r)}</span>
           ${deadlineBadge(r, today)}
         </div>
         <div class="card-body">
@@ -284,7 +310,7 @@
     }
     if (filtered.length === 0) {
       els.count.textContent = "";
-      showEmpty("沒有符合條件的標案。試著放寬關鍵字或日期範圍。");
+      showEmpty("沒有符合條件的標案。試著放寬關鍵字或期間範圍。");
       return;
     }
     els.empty.hidden = true;
@@ -328,7 +354,7 @@
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
-    for (const el of [els.attr, els.method, els.sort, els.open, els.start, els.end]) {
+    for (const el of [els.attr, els.method, els.region, els.sort, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
     els.range.addEventListener("change", () => {
@@ -363,7 +389,13 @@
           favBtn.classList.remove("on");
           favBtn.setAttribute("aria-pressed", "false");
         } else {
-          const rec = allRecords.find((r) => recordKey(r) === key) || Object.values(favorites).find((r) => recordKey(r) === key);
+          let rec = Object.values(favorites).find((r) => recordKey(r) === key);
+          if (!rec) {
+            for (const records of monthCache.values()) {
+              rec = records.find((r) => recordKey(r) === key);
+              if (rec) break;
+            }
+          }
           if (rec) {
             favorites[key] = rec;
             favBtn.classList.add("on");
@@ -405,6 +437,7 @@
     };
     add(els.attr, meta.filters?.attrs);
     add(els.method, meta.filters?.methods);
+    add(els.region, meta.filters?.regions);
   }
 
   // ---------- 啟動 ----------
@@ -412,7 +445,8 @@
     bindEvents();
     renderSavedChips();
     try {
-      await loadData();
+      meta = await fetchJson("data/index.json");
+      if (!meta.months || meta.months.length === 0) throw new Error("index 沒有月份資料");
     } catch (err) {
       showEmpty("資料尚未同步或載入失敗。請先執行一次同步(GitHub Actions「每日同步標案資料」),或稍後再試。");
       els.count.textContent = "";
@@ -421,7 +455,8 @@
     }
     populateFilterOptions();
     renderSyncStatus();
-    applyFilters();
+    setFilterState({});
+    await applyFilters();
   }
 
   init();

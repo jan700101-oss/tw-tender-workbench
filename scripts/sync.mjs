@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
- * 標案工務台 — 政府電子採購網每日同步
+ * 標案工務台 — 政府電子採購網半月檔同步
  *
  * 資料來源:政府電子採購網「資料集下載」頁公開 XML
  *   https://web.pcc.gov.tw/tps/tp/OpenData/showList
  *
- * 欄位語意(重要):
+ * 欄位語意(經真實資料驗證):
+ *   - 官方檔名 tender_YYYYMM01.xml = 該月 1–15 日公告清單(半月檔),
+ *     tender_YYYYMM02.xml = 16 日–月底。XML 內沒有精確公告日。
  *   - TENDER_SPDT 是「截止投標日期」,不是公告日期。
- *   - 公告日期取自官方檔名(tender_YYYYMMDD.xml = 該日公告清單)。
+ *   - 此公開資料集為官方提供之部分標案(每半月約 100–340 筆),並非全部標案。
+ *   - 地區為依機關名稱與案名文字「推定」,官方 XML 無地區欄位。
  *
  * 產出(docs/data/):
- *   - index.json                同步狀態、月份清單、篩選選項、已處理檔案
- *   - tenders-YYYY-MM.json      該公告月份的標案(緊湊陣列格式)
+ *   - index.json                同步狀態、月份清單、篩選選項
+ *   - tenders-YYYY-MM.json      依公告期間月份分片(緊湊陣列格式)
  *
  * 失敗策略:下載或解析失敗時保留既有資料,index.json 記錄失敗狀態,
  * 程式以非零碼結束讓排程顯示紅色,但不覆蓋上一版資料。
@@ -19,10 +22,10 @@
  * 用法:
  *   node scripts/sync.mjs                 # 正式同步
  *   node scripts/sync.mjs --from-dir DIR  # 離線測試:讀取 DIR 內的 *.xml
- *   node scripts/sync.mjs --discover      # 額外輸出每種檔案的原始欄位樣本
+ *   node scripts/sync.mjs --discover      # 額外輸出欄位樣本與資料集描述
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,11 +36,11 @@ const INDEX_PATH = join(DATA_DIR, "index.json");
 
 const LIST_URL = "https://web.pcc.gov.tw/tps/tp/OpenData/showList";
 const DOWNLOAD_BASE = "https://web.pcc.gov.tw/tps/tp/OpenData/downloadFile?fileName=";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) tw-tender-workbench";
+const USER_AGENT = "tw-tender-workbench/1.0";
 
-const WINDOW_DAYS = 92;           // 保留最近三個月公告
 const FETCH_TIMEOUT_MS = 60_000;
-const MAX_NEW_FILES_PER_RUN = 40; // 單次最多補抓的歷史檔數,避免第一次執行爆量
+const MAX_FILES_PER_RUN = 90;      // 官方目前提供 36 個月 × 2 檔;一次可全量補齊
+const REFRESH_RECENT_DAYS = 25;    // 期間結束日在此天數內的檔案每次都重抓(半月檔會持續增筆)
 
 const args = process.argv.slice(2);
 const fromDir = args.includes("--from-dir") ? args[args.indexOf("--from-dir") + 1] : null;
@@ -61,10 +64,7 @@ function decodeEntities(s) {
     .replace(/&amp;/g, "&");
 }
 
-/**
- * 找出檔案中重複出現、且內含子元素的「記錄元素」,回傳每筆記錄的欄位物件。
- * 不假設記錄元素名稱(tender 檔為 TENDER,其他檔案類型名稱未知)。
- */
+/** 找出重複出現且內含子元素的「記錄元素」,回傳每筆記錄的欄位物件。 */
 function parseFlatXml(xml) {
   const counts = new Map();
   const openTag = /<([A-Za-z_][\w.-]*)\s*>/g;
@@ -76,7 +76,6 @@ function parseFlatXml(xml) {
   let best = 1;
   for (const [tag, count] of counts) {
     if (count <= best) continue;
-    // 記錄元素:其區塊內還有其他標籤(欄位)
     const probe = new RegExp(`<${tag}\\s*>([\\s\\S]*?)</${tag}>`).exec(xml);
     if (probe && /<[A-Za-z_]/.test(probe[1])) {
       recordTag = tag;
@@ -101,19 +100,24 @@ function parseFlatXml(xml) {
   return { recordTag, records };
 }
 
-// ---------- 日期處理 ----------
-
-function isoFromFileName(fileName) {
-  const m = /_(\d{4})(\d{2})(\d{2})\.xml$/.exec(fileName);
-  if (!m) return null;
-  const iso = `${m[1]}-${m[2]}-${m[3]}`;
-  return isValidIsoDate(iso) ? iso : null;
-}
+// ---------- 日期與期間 ----------
 
 function isValidIsoDate(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
   const d = new Date(`${iso}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
+}
+
+/** tender_YYYYMM01.xml → 1–15 日;tender_YYYYMM02.xml → 16–月底。 */
+function periodFromFileName(fileName) {
+  const m = /_(\d{4})(\d{2})(0[12])\.xml$/.exec(fileName);
+  if (!m) return null;
+  const [, y, mo, half] = m;
+  const lastDay = new Date(Date.UTC(Number(y), Number(mo), 0)).getUTCDate();
+  const start = half === "01" ? `${y}-${mo}-01` : `${y}-${mo}-16`;
+  const end = half === "01" ? `${y}-${mo}-15` : `${y}-${mo}-${lastDay}`;
+  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return null;
+  return { start, end, month: `${y}-${mo}` };
 }
 
 /** 接受 yyyy/MM/dd 或 yyyy-MM-dd;民國年(<1911)自動加 1911。無法解析回傳 null。 */
@@ -128,14 +132,30 @@ function normalizeDate(raw) {
 }
 
 function todayIso() {
-  // 以台北時間為準
-  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // 台北時間
 }
 
-function addDays(iso, days) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+// ---------- 地區推定(官方 XML 無地區欄位,依機關名稱與案名文字比對) ----------
+
+const REGIONS = [
+  ["基隆市", ["基隆市", "基隆"]], ["臺北市", ["臺北市", "台北市", "臺北", "台北"]],
+  ["新北市", ["新北市", "新北"]], ["桃園市", ["桃園市", "桃園"]],
+  ["新竹市", ["新竹市"]], ["新竹縣", ["新竹縣"]], ["苗栗縣", ["苗栗縣", "苗栗"]],
+  ["臺中市", ["臺中市", "台中市", "臺中", "台中"]], ["彰化縣", ["彰化縣", "彰化"]],
+  ["南投縣", ["南投縣", "南投"]], ["雲林縣", ["雲林縣", "雲林"]],
+  ["嘉義市", ["嘉義市"]], ["嘉義縣", ["嘉義縣"]],
+  ["臺南市", ["臺南市", "台南市", "臺南", "台南"]], ["高雄市", ["高雄市", "高雄"]],
+  ["屏東縣", ["屏東縣", "屏東"]], ["宜蘭縣", ["宜蘭縣", "宜蘭"]],
+  ["花蓮縣", ["花蓮縣", "花蓮"]], ["臺東縣", ["臺東縣", "台東縣", "臺東", "台東"]],
+  ["澎湖縣", ["澎湖縣", "澎湖"]], ["金門縣", ["金門縣", "金門"]], ["連江縣", ["連江縣", "連江"]],
+];
+
+function inferRegion(agency, title) {
+  const text = `${agency} ${title}`;
+  for (const [name, aliases] of REGIONS) {
+    if (aliases.some((a) => text.includes(a))) return name;
+  }
+  return "地區未明";
 }
 
 // ---------- 下載 ----------
@@ -174,39 +194,35 @@ async function fetchWithRetry(url, tries = 3) {
 
 // ---------- 記錄正規化 ----------
 
-/** 從原始欄位物件挑出核心欄位;未知欄位不進前台,但欄位名稱會記錄於 index.json。 */
-function normalizeRecord(raw, announceDate, sourceFile, kind) {
-  const title = raw.TENDER_NAME || raw.AWARD_NAME || raw.NAME || "";
-  const agency = raw.TENDER_ORG_NAME || raw.ORG_NAME || raw.AGENCY || "";
-  const caseNo = raw.TENDER_CASE_NO || raw.CASE_NO || "";
-  const method = raw.PROCUREMENT_TYPE || raw.TENDER_WAY || "";
-  const attr = raw.PROCUREMENT_ATTR || raw.ATTR || "";
-  const deadline = normalizeDate(raw.TENDER_SPDT || raw.SPDT || "");
-  let url = "";
-  for (const v of Object.values(raw)) {
-    if (typeof v === "string" && /^https?:\/\//.test(v)) { url = v; break; }
-  }
-  if (!title || !agency) return null; // 必要欄位缺漏,不收
+function normalizeRecord(raw, period, sourceFile, kind) {
+  const title = raw.TENDER_NAME || "";
+  const agency = raw.TENDER_ORG_NAME || "";
+  const caseNo = raw.TENDER_CASE_NO || "";
+  const method = raw.PROCUREMENT_TYPE || "";
+  const attr = raw.PROCUREMENT_ATTR || "";
+  const deadline = normalizeDate(raw.TENDER_SPDT || "");
+  if (!title || !agency || !caseNo) return null; // 必要欄位缺漏,不收
   return {
-    kind,                 // tender=招標
-    announceDate,         // 公告日期(來自官方檔名)
-    deadline,             // 截止投標日期(TENDER_SPDT),可能為 null
+    kind,                       // tender=招標
+    periodStart: period.start,  // 公告期間(半月檔)
+    periodEnd: period.end,
+    deadline,                   // 截止投標日期(TENDER_SPDT),可能為 null
     agency,
     caseNo,
     title,
     method,
     attr,
+    region: inferRegion(agency, title), // 推定,非官方欄位
     sourceFile,
-    url,
   };
 }
 
-function recordKey(r) {
-  return [r.kind, r.announceDate, r.agency, r.caseNo, r.title].join("|");
+/** 同一案(機關+案號+案名)出現在多個半月檔時,保留最新期間的版本。 */
+function dedupKey(r) {
+  return [r.kind, r.agency, r.caseNo, r.title].join("|");
 }
 
-// 緊湊格式:月份檔內用陣列省空間
-const COLUMNS = ["kind", "announceDate", "deadline", "agency", "caseNo", "title", "method", "attr", "sourceFile", "url"];
+const COLUMNS = ["kind", "periodStart", "periodEnd", "deadline", "agency", "caseNo", "title", "method", "attr", "region", "sourceFile"];
 function toRow(r) { return COLUMNS.map((c) => r[c] ?? ""); }
 function fromRow(row) {
   const r = {};
@@ -218,28 +234,27 @@ function fromRow(row) {
 
 function loadIndex() {
   if (!existsSync(INDEX_PATH)) {
-    return {
-      version: 1,
-      lastSuccess: null,
-      lastAttempt: null,
-      months: [],
-      processedFiles: [],
-      discoveredFiles: [],
-      fieldNames: {},
-      filters: { attrs: [], methods: [] },
-    };
+    return { version: 2, lastSuccess: null, lastAttempt: null, months: [], processedFiles: [], discoveredFiles: [], fieldNames: {}, filters: {} };
   }
-  return JSON.parse(readFileSync(INDEX_PATH, "utf8"));
+  const idx = JSON.parse(readFileSync(INDEX_PATH, "utf8"));
+  if (idx.version !== 2) {
+    return { version: 2, lastSuccess: null, lastAttempt: null, months: [], processedFiles: [], discoveredFiles: [], fieldNames: {}, filters: {} };
+  }
+  return idx;
 }
 
-function loadMonth(month) {
-  const p = join(DATA_DIR, `tenders-${month}.json`);
-  if (!existsSync(p)) return new Map();
-  const rows = JSON.parse(readFileSync(p, "utf8")).rows || [];
+function loadAllRecords(index) {
   const map = new Map();
-  for (const row of rows) {
-    const r = fromRow(row);
-    map.set(recordKey(r), r);
+  for (const { month } of index.months || []) {
+    const p = join(DATA_DIR, `tenders-${month}.json`);
+    if (!existsSync(p)) continue;
+    const part = JSON.parse(readFileSync(p, "utf8"));
+    for (const row of part.rows || []) {
+      const r = fromRow(row);
+      const key = dedupKey(r);
+      const prev = map.get(key);
+      if (!prev || prev.periodStart < r.periodStart) map.set(key, r);
+    }
   }
   return map;
 }
@@ -256,84 +271,82 @@ async function main() {
   mkdirSync(DATA_DIR, { recursive: true });
   const index = loadIndex();
   const today = todayIso();
-  const cutoff = addDays(today, -WINDOW_DAYS);
-  const attempt = {
-    at: new Date().toISOString(),
-    status: "failed",
-    error: null,
-    filesFetched: 0,
-    recordsAdded: 0,
-    recordsSkipped: 0,
-  };
+  const attempt = { at: new Date().toISOString(), status: "failed", error: null, filesFetched: 0, recordsUpserted: 0, recordsSkipped: 0 };
 
   try {
     // 1. 取得可下載檔案清單
     let fileNames = [];
+    let listHtml = "";
     if (fromDir) {
       fileNames = readdirSync(fromDir).filter((f) => f.endsWith(".xml")).sort();
       log(`離線模式:讀取 ${fromDir} 內 ${fileNames.length} 個 XML`);
     } else {
-      const html = await fetchWithRetry(LIST_URL);
-      const found = html.match(/[A-Za-z]+_\d{8}\.xml/g) || [];
+      listHtml = await fetchWithRetry(LIST_URL);
+      const found = listHtml.match(/[A-Za-z]+_\d{8}\.xml/g) || [];
       fileNames = [...new Set(found)].sort();
       log(`資料集下載頁列出 ${fileNames.length} 個檔案`);
     }
     if (fileNames.length === 0) throw new Error("政府資料集下載頁沒有列出任何 XML 檔案");
-
     index.discoveredFiles = fileNames;
 
-    // 2. 只處理招標檔;其他類型先記錄名稱,確認欄位後再擴充
-    const tenderFiles = fileNames.filter((f) => /^tender_\d{8}\.xml$/.test(f));
+    if (discover && listHtml) {
+      // 輸出第一個 XML 連結附近的頁面文字,協助確認官方資料集名稱與涵蓋範圍
+      const pos = listHtml.search(/tender_\d{8}\.xml/);
+      if (pos > 0) {
+        const ctx = listHtml.slice(Math.max(0, pos - 1200), pos + 200)
+          .replace(/<script[\s\S]*?<\/script>/g, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ").trim();
+        log(`資料集頁面描述(截錄):${ctx.slice(-500)}`);
+      }
+    }
+
+    // 2. 挑選要處理的招標半月檔
+    const tenderFiles = fileNames.filter((f) => /^tender_\d{6}0[12]\.xml$/.test(f) && periodFromFileName(f));
     const processed = new Set(index.processedFiles);
-    const wanted = tenderFiles
-      .filter((f) => {
-        const d = isoFromFileName(f);
-        return d && d >= cutoff && d <= addDays(today, 1) && !processed.has(f);
-      })
-      .slice(-MAX_NEW_FILES_PER_RUN);
-    log(`招標檔 ${tenderFiles.length} 個,其中 ${wanted.length} 個為未處理的新檔`);
+    const refreshCutoff = new Date(Date.now() - REFRESH_RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+    const wanted = tenderFiles.filter((f) => {
+      const p = periodFromFileName(f);
+      if (!processed.has(f)) return true;
+      return p.end >= refreshCutoff; // 近期半月檔會持續增筆,每次重抓
+    }).slice(-MAX_FILES_PER_RUN);
+    log(`招標半月檔 ${tenderFiles.length} 個,本次處理 ${wanted.length} 個(未處理或近 ${REFRESH_RECENT_DAYS} 天內)`);
 
-    // 3. 下載並解析
-    const byMonth = new Map(); // month -> Map(key -> record)
-    const monthOf = (r) => r.announceDate.slice(0, 7);
-    const ensureMonth = (month) => {
-      if (!byMonth.has(month)) byMonth.set(month, loadMonth(month));
-      return byMonth.get(month);
-    };
-
+    // 3. 下載並解析,合併進全量資料(同案保留最新期間版本)
+    const all = loadAllRecords(index);
+    const beforeCount = all.size;
     const fieldNames = new Set(index.fieldNames?.tender || []);
     for (const fileName of wanted) {
-      const announceDate = isoFromFileName(fileName);
+      const period = periodFromFileName(fileName);
       const xml = fromDir
         ? readFileSync(join(fromDir, fileName), "utf8")
         : await fetchWithRetry(DOWNLOAD_BASE + encodeURIComponent(fileName));
       const { recordTag, records } = parseFlatXml(xml);
       if (records.length === 0) {
         log(`警告:${fileName} 解析不到任何記錄(記錄元素:${recordTag}),略過且不標記已處理`);
-        attempt.recordsSkipped += 1;
         continue;
       }
-      let added = 0;
+      let upserted = 0;
       for (const raw of records) {
         for (const k of Object.keys(raw)) fieldNames.add(k);
-        const rec = normalizeRecord(raw, announceDate, fileName, "tender");
+        const rec = normalizeRecord(raw, period, fileName, "tender");
         if (!rec) { attempt.recordsSkipped += 1; continue; }
-        const bucket = ensureMonth(monthOf(rec));
-        const key = recordKey(rec);
-        if (!bucket.has(key)) added += 1;
-        bucket.set(key, rec);
+        const key = dedupKey(rec);
+        const prev = all.get(key);
+        if (!prev || prev.periodStart <= rec.periodStart) {
+          all.set(key, rec);
+          upserted += 1;
+        }
       }
-      if (discover && records.length > 0) {
-        log(`欄位樣本 ${fileName} <${recordTag}> ${JSON.stringify(records[0])}`);
-      }
+      if (discover) log(`欄位樣本 ${fileName} <${recordTag}> ${JSON.stringify(records[0])}`);
       processed.add(fileName);
       attempt.filesFetched += 1;
-      attempt.recordsAdded += added;
-      log(`${fileName}:${records.length} 筆,新增 ${added} 筆`);
+      attempt.recordsUpserted += upserted;
+      log(`${fileName}:${records.length} 筆(期間 ${period.start}~${period.end})`);
     }
 
-    if (discover) {
-      // 其他檔案類型各抓一個樣本,只印欄位供開發判斷,不寫入資料
+    if (discover && !fromDir) {
+      // 其他檔案類型各抓一個樣本,只印欄位供評估,不寫入資料
       const otherTypes = new Map();
       for (const f of fileNames) {
         if (/^tender_/.test(f)) continue;
@@ -342,7 +355,7 @@ async function main() {
       }
       for (const [prefix, f] of otherTypes) {
         try {
-          const xml = fromDir ? readFileSync(join(fromDir, f), "utf8") : await fetchWithRetry(DOWNLOAD_BASE + encodeURIComponent(f));
+          const xml = await fetchWithRetry(DOWNLOAD_BASE + encodeURIComponent(f));
           const { recordTag, records } = parseFlatXml(xml);
           log(`探索 ${prefix}(${f})記錄元素 <${recordTag}> 共 ${records.length} 筆`);
           if (records[0]) log(`欄位樣本 ${f} ${JSON.stringify(records[0])}`);
@@ -352,54 +365,56 @@ async function main() {
       }
     }
 
-    // 4. 修剪超過保留期的舊資料 + 重算月份清單
-    const allMonths = new Set(byMonth.keys());
-    for (const m of index.months.map((x) => x.month)) allMonths.add(m);
-    const monthsMeta = [];
-    let total = 0;
-    const attrs = new Set();
-    const methods = new Set();
-    for (const month of [...allMonths].sort()) {
-      const bucket = byMonth.get(month) || loadMonth(month);
-      const kept = [...bucket.values()].filter(
-        (r) => r.announceDate >= cutoff || (r.deadline && r.deadline >= today)
-      );
-      if (kept.length === 0) continue;
-      kept.sort((a, b) => (a.announceDate < b.announceDate ? 1 : -1));
-      for (const r of kept) {
-        if (r.attr) attrs.add(r.attr);
-        if (r.method) methods.add(r.method);
-      }
-      writeJsonAtomic(join(DATA_DIR, `tenders-${month}.json`), {
-        month,
-        columns: COLUMNS,
-        rows: kept.map(toRow),
-      });
-      monthsMeta.push({ month, count: kept.length });
-      total += kept.length;
+    if (all.size === 0) throw new Error("同步後資料為空,拒絕寫入(保留上一版)");
+
+    // 4. 依期間月份分片寫出
+    const byMonth = new Map();
+    const attrs = new Set(), methods = new Set(), regionSet = new Set();
+    for (const r of all.values()) {
+      const month = r.periodStart.slice(0, 7);
+      if (!byMonth.has(month)) byMonth.set(month, []);
+      byMonth.get(month).push(r);
+      if (r.attr) attrs.add(r.attr);
+      if (r.method) methods.add(r.method);
+      if (r.region) regionSet.add(r.region);
     }
-    if (total === 0) throw new Error("同步後資料為空,拒絕寫入(保留上一版)");
+    const monthsMeta = [];
+    for (const month of [...byMonth.keys()].sort()) {
+      const rows = byMonth.get(month);
+      rows.sort((a, b) => (a.periodStart < b.periodStart ? 1 : a.periodStart > b.periodStart ? -1 : (a.deadline || "") < (b.deadline || "") ? -1 : 1));
+      writeJsonAtomic(join(DATA_DIR, `tenders-${month}.json`), { month, columns: COLUMNS, rows: rows.map(toRow) });
+      monthsMeta.push({ month, count: rows.length });
+    }
+    // 移除已不存在月份的舊分片
+    for (const { month } of index.months || []) {
+      if (!byMonth.has(month)) {
+        const p = join(DATA_DIR, `tenders-${month}.json`);
+        if (existsSync(p)) unlinkSync(p);
+      }
+    }
 
     // 5. 寫出索引
     attempt.status = "success";
     index.lastAttempt = attempt;
-    index.lastSuccess = { at: attempt.at, totalRecords: total, windowDays: WINDOW_DAYS, cutoff };
+    index.lastSuccess = { at: attempt.at, totalRecords: all.size, months: monthsMeta.length };
     index.months = monthsMeta;
-    index.processedFiles = [...processed].filter((f) => {
-      const d = isoFromFileName(f);
-      return d && d >= addDays(cutoff, -31);
-    }).sort();
+    index.processedFiles = [...processed].filter((f) => tenderFiles.includes(f)).sort();
     index.fieldNames = { tender: [...fieldNames].sort() };
-    index.filters = { attrs: [...attrs].sort(), methods: [...methods].sort() };
+    index.filters = { attrs: [...attrs].sort(), methods: [...methods].sort(), regions: [...regionSet].sort() };
     index.source = LIST_URL;
-    index.note = "deadline 為官方 TENDER_SPDT(截止投標日);announceDate 取自官方檔名(該日公告清單)";
+    index.notes = {
+      period: "公告期間取自官方半月檔檔名(01=1–15日,02=16–月底),XML 內無精確公告日",
+      deadline: "官方 TENDER_SPDT(截止投標日)",
+      region: "依機關名稱與案名文字推定,官方 XML 無地區欄位",
+      coverage: "官方公開半月檔為部分標案,並非政府電子採購網全部公告",
+      dedup: "同一案(機關+案號+案名)出現在多個半月檔時保留最新期間版本",
+    };
     writeJsonAtomic(INDEX_PATH, index);
-    log(`同步成功:共 ${total} 筆,涵蓋 ${monthsMeta.length} 個月份`);
+    log(`同步成功:共 ${all.size} 筆(原 ${beforeCount} 筆),涵蓋 ${monthsMeta.length} 個月份`);
   } catch (err) {
     attempt.error = err.message;
     index.lastAttempt = attempt;
-    // 只更新 lastAttempt,不動既有資料
-    writeJsonAtomic(INDEX_PATH, index);
+    writeJsonAtomic(INDEX_PATH, index); // 只更新狀態,不動既有資料
     log(`同步失敗:${err.message}(既有資料未變動)`);
     process.exitCode = 1;
   }

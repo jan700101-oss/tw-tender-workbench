@@ -33,16 +33,20 @@
         <select id="f-method"><option value="">全部</option></select>
       </div>
       <div class="field">
+        <label for="f-region">地區(推定)</label>
+        <select id="f-region"><option value="">全部</option></select>
+      </div>
+      <div class="field">
         <label for="f-agency">機關</label>
         <input id="f-agency" type="search" placeholder="機關名稱關鍵字" autocomplete="off">
       </div>
       <div class="field">
-        <label for="f-range">公告日期</label>
+        <label for="f-range">公告期間</label>
         <select id="f-range">
-          <option value="all">全部(近三個月)</option>
-          <option value="7">近 7 天</option>
-          <option value="14">近 14 天</option>
-          <option value="30">近 30 天</option>
+          <option value="3">近 3 個月</option>
+          <option value="6">近 6 個月</option>
+          <option value="12">近 12 個月</option>
+          <option value="all">全部(約 3 年)</option>
           <option value="custom">自訂範圍</option>
         </select>
       </div>
@@ -55,7 +59,7 @@
       <div class="field">
         <label for="f-sort">排序</label>
         <select id="f-sort">
-          <option value="announce-desc">公告日:新 → 舊</option>
+          <option value="period-desc">公告期間:新 → 舊</option>
           <option value="deadline-asc">截止日:近 → 遠</option>
         </select>
       </div>
@@ -82,8 +86,10 @@
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>資料每日自動同步自政府電子採購網公開 XML。公告日期取自官方每日清單檔;截止投標日為官方 TENDER_SPDT 欄位。
-       本站僅整理公開資料,投標前請以<a href="https://web.pcc.gov.tw/" target="_blank" rel="noopener">政府電子採購網</a>正式公告為準。</p>
+    <p>資料每日自動同步自政府電子採購網公開半月檔 XML(每月兩檔:1–15 日、16 日–月底)。
+       此公開資料集為官方提供之<strong>部分標案</strong>,並非全部公告;截止投標日為官方 TENDER_SPDT 欄位;
+       地區為依機關名稱與案名文字推定,僅供篩選參考。
+       投標前請以<a href="https://web.pcc.gov.tw/" target="_blank" rel="noopener">政府電子採購網</a>正式公告為準。</p>
     <p id="footer-sync"></p>
   </div>
 </footer>
