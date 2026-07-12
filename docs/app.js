@@ -33,6 +33,8 @@
     favCount: $("fav-count"),
     count: $("result-count"),
     results: $("results"),
+    detailDialog: $("detail-dialog"),
+    detailContent: $("detail-content"),
     more: $("btn-more"),
     empty: $("empty-state"),
     footerSync: $("footer-sync"),
@@ -289,6 +291,7 @@
           <span class="case-no">案號 <button class="copy" type="button" data-copy="${escapeHtml(r.caseNo)}" title="複製案號">${escapeHtml(r.caseNo)} ⧉</button></span>
         </div>
         <div class="card-links">
+          <button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>
           <a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢</a>
           <a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源檔 ${escapeHtml(r.sourceFile)}</a>
         </div>`;
@@ -315,6 +318,40 @@
     }
     els.empty.hidden = true;
     els.count.textContent = `${filtered.length} 筆結果`;
+  }
+
+  async function openDetail({ caseNo, title, agency }) {
+    els.detailContent.className = "detail-loading";
+    els.detailContent.textContent = "正在載入標案詳情…";
+    els.detailDialog.showModal();
+    try {
+      const searchRes = await fetch(`https://pcc-api.openfun.app/api/searchbytitle?query=${encodeURIComponent(title)}`);
+      if (!searchRes.ok) throw new Error(`搜尋 API ${searchRes.status}`);
+      const search = await searchRes.json();
+      const hit = search.records?.find((x) => x.job_number === caseNo && (!x.unit_name || x.unit_name === agency))
+        || search.records?.find((x) => x.job_number === caseNo);
+      if (!hit?.unit_id) throw new Error("找不到相符的單案資料");
+      const detailRes = await fetch(`https://pcc-api.openfun.app/api/tender?unit_id=${encodeURIComponent(hit.unit_id)}&job_number=${encodeURIComponent(caseNo)}`);
+      if (!detailRes.ok) throw new Error(`詳情 API ${detailRes.status}`);
+      const payload = await detailRes.json();
+      const notice = payload.records?.find((x) => x.brief?.type?.includes("招標") && x.detail) || payload.records?.find((x) => x.detail);
+      if (!notice?.detail) throw new Error("此案目前沒有可顯示的詳細公告");
+      const d = notice.detail;
+      const val = (key) => d[key] || "未提供";
+      const fields = [
+        ["預算金額", "採購資料:預算金額"], ["招標方式", "招標資料:招標方式"], ["決標方式", "招標資料:決標方式"],
+        ["公告日", "招標資料:公告日"], ["截止投標", "領投開標:截止投標"], ["開標時間", "領投開標:開標時間"],
+        ["開標地點", "領投開標:開標地點"], ["履約地點", "其他:履約地點"], ["履約期限", "其他:履約期限"],
+        ["押標金", "領投開標:是否須繳納押標金:押標金額度"], ["聯絡人", "機關資料:聯絡人"], ["聯絡電話", "機關資料:聯絡電話"],
+        ["廠商資格摘要", "其他:廠商資格摘要", true], ["附加說明", "其他:附加說明", true],
+      ];
+      const noticeDownload = d["領投開標:是否提供電子領標:投標須知下載"];
+      els.detailContent.className = "detail-panel";
+      els.detailContent.innerHTML = `<header><div><span>${escapeHtml(notice.brief?.type || "標案詳情")}</span><h2>${escapeHtml(notice.brief?.title || title)}</h2><p>${escapeHtml(payload.unit_name || agency)} · ${escapeHtml(caseNo)}</p></div><button class="detail-close" type="button" aria-label="關閉">×</button></header><div class="detail-grid">${fields.map(([label,key,wide]) => `<div class="detail-field ${wide ? "wide" : ""}"><small>${label}</small><strong>${escapeHtml(val(key))}</strong></div>`).join("")}</div><div class="detail-actions"><a href="${escapeHtml(d.url || officialSearchUrl({ caseNo }))}" target="_blank" rel="noopener">政府原始公告</a>${noticeDownload ? `<a href="${escapeHtml(noticeDownload)}" target="_blank" rel="noopener">下載投標須知</a>` : ""}</div>`;
+    } catch (error) {
+      els.detailContent.className = "detail-loading";
+      els.detailContent.innerHTML = `<strong>詳細資料暫時無法載入</strong><p>${escapeHtml(error.message)}</p><button class="detail-close btn" type="button">關閉</button>`;
+    }
   }
 
   function showEmpty(msg) {
@@ -381,6 +418,11 @@
     els.tabFav.addEventListener("click", () => switchTab("fav"));
 
     els.results.addEventListener("click", (e) => {
+      const detailBtn = e.target.closest("button.detail-trigger");
+      if (detailBtn) {
+        openDetail({ caseNo: detailBtn.dataset.case, title: detailBtn.dataset.title, agency: detailBtn.dataset.agency });
+        return;
+      }
       const favBtn = e.target.closest("button.fav");
       if (favBtn) {
         const key = favBtn.dataset.key;
@@ -414,6 +456,9 @@
           setTimeout(() => copyBtn.classList.remove("copied"), 800);
         });
       }
+    });
+    els.detailDialog.addEventListener("click", (e) => {
+      if (e.target.closest(".detail-close") || e.target === els.detailDialog) els.detailDialog.close();
     });
   }
 
