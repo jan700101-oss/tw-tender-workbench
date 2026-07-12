@@ -131,6 +131,10 @@
       els.banner.hidden = false;
       els.banner.className = "sync-banner warn";
       els.banner.textContent = `⚠ 資料已 ${staleDays} 天未更新,最後成功同步:${fmtTime(ok.at)}。`;
+    } else if (attempt && attempt.daily && attempt.daily.status === "failed") {
+      els.banner.hidden = false;
+      els.banner.className = "sync-banner warn";
+      els.banner.textContent = `⚠ 每日完整公告來源同步失敗(${attempt.daily.error || "未知錯誤"}),近期公告可能不完整;官方半月檔資料不受影響。`;
     } else {
       els.banner.hidden = true;
     }
@@ -204,7 +208,12 @@
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
       if (minDate && r.periodEnd < minDate) return false;
       if (maxDate && r.periodStart > maxDate) return false;
-      if (s.openOnly && !(r.deadline && r.deadline >= today)) return false;
+      if (s.openOnly) {
+        // 每日 API 記錄不含截止日:公告 45 天內視為可能仍開放
+        const maybeOpen = !r.deadline && r.sourceFile.startsWith("api:") &&
+          (Date.parse(today) - Date.parse(r.periodStart)) / 86400000 <= 45;
+        if (!(r.deadline && r.deadline >= today) && !maybeOpen) return false;
+      }
       if (include.length || exclude.length) {
         const hay = `${r.title} ${r.caseNo} ${r.agency}`.toLowerCase();
         for (const t of include) if (!hay.includes(t)) return false;
@@ -242,17 +251,30 @@
     return `https://web.pcc.gov.tw/prkms/tender/common/basic/readTenderBasic?${p}`;
   }
 
+  function isDailyRecord(r) {
+    return r.sourceFile.startsWith("api:");
+  }
+
   function sourceFileUrl(r) {
+    if (isDailyRecord(r)) {
+      return `https://pcc-api.openfun.app/api/listbydate?date=${r.sourceFile.slice(4)}`;
+    }
     return `https://web.pcc.gov.tw/tps/tp/OpenData/downloadFile?fileName=${encodeURIComponent(r.sourceFile)}`;
+  }
+
+  function sourceLabel(r) {
+    return isDailyRecord(r) ? `每日API ${r.periodStart}` : r.sourceFile;
   }
 
   function periodLabel(r) {
     const [y, m, d1] = r.periodStart.split("-");
+    if (r.periodStart === r.periodEnd) return `公告日 ${y}/${m}/${d1}`;
     const d2 = r.periodEnd.split("-")[2];
-    return `${y}/${m}/${Number(d1)}–${Number(d2)}`;
+    return `公告期間 ${y}/${m}/${Number(d1)}–${Number(d2)}`;
   }
 
   function deadlineBadge(r, today) {
+    if (!r.deadline && isDailyRecord(r)) return `<span class="badge muted">截止日見詳情</span>`;
     if (!r.deadline) return `<span class="badge muted">截止日未提供</span>`;
     if (r.deadline < today) return `<span class="badge closed">已截止 ${r.deadline}</span>`;
     const days = Math.round((new Date(`${r.deadline}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
@@ -283,7 +305,7 @@
           <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
           <span class="badge">${escapeHtml(r.method || "—")}</span>
           ${regionBadge}
-          <span class="badge announce">公告期間 ${periodLabel(r)}</span>
+          <span class="badge announce">${periodLabel(r)}</span>
           ${deadlineBadge(r, today)}
         </div>
         <div class="card-body">
@@ -293,7 +315,7 @@
         <div class="card-links">
           <button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>
           <a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢</a>
-          <a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源檔 ${escapeHtml(r.sourceFile)}</a>
+          <a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源 ${escapeHtml(sourceLabel(r))}</a>
         </div>`;
       frag.appendChild(li);
     }

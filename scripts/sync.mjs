@@ -42,8 +42,15 @@ const FETCH_TIMEOUT_MS = 60_000;
 const MAX_FILES_PER_RUN = 90;      // 官方目前提供 36 個月 × 2 檔;一次可全量補齊
 const REFRESH_RECENT_DAYS = 60;    // 期間結束日在此天數內的檔案每次都重抓(官方半月檔約有 6 週發布延遲,且可能增補)
 
+// 每日完整公告來源:g0v/OpenFun 標案 API(第三方,失敗時不影響官方來源同步)
+const DAILY_API_BASE = "https://pcc-api.openfun.app/api";
+const DAILY_DAYS = 35;             // 回補天數
+const DAILY_REFRESH_DAYS = 3;      // 最近幾天每次重抓(API 約 1 天延遲,且可能補資料)
+const DAILY_REQUEST_GAP_MS = 1200; // 禮貌間隔,避免打爆免費服務
+
 const args = process.argv.slice(2);
 const fromDir = args.includes("--from-dir") ? args[args.indexOf("--from-dir") + 1] : null;
+const dailyFromDir = args.includes("--daily-from-dir") ? args[args.indexOf("--daily-from-dir") + 1] : null;
 const discover = args.includes("--discover");
 
 function log(msg) {
@@ -177,6 +184,11 @@ async function fetchText(url) {
   }
 }
 
+async function fetchJsonWithRetry(url, tries = 3) {
+  const text = await fetchWithRetry(url, tries);
+  return JSON.parse(text);
+}
+
 async function fetchWithRetry(url, tries = 3) {
   let lastErr;
   for (let i = 0; i < tries; i++) {
@@ -222,6 +234,51 @@ function dedupKey(r) {
   return [r.kind, r.agency, r.caseNo, r.title].join("|");
 }
 
+/** 來源優先序:官方半月檔(2)勝過每日 API(1);同來源取較新期間。 */
+function srcRank(r) {
+  return r.sourceFile.startsWith("api:") ? 1 : 2;
+}
+
+function shouldReplace(prev, next) {
+  if (!prev) return true;
+  const pr = srcRank(prev), nr = srcRank(next);
+  if (nr !== pr) return nr > pr;
+  return next.periodStart >= prev.periodStart;
+}
+
+/**
+ * 每日 API(listbydate)記錄 → 正規化。
+ * 只收招標類公告;決標/無法決標留待後續階段。
+ * 每日記錄的 periodStart=periodEnd=精確公告日;deadline 由前端詳情視窗即時取得。
+ */
+function normalizeDailyRecord(row) {
+  const type = row?.brief?.type || "";
+  if (!type.includes("招標") && !type.includes("公開取得")) return null;
+  if (/無法決標|決標公告|撤銷/.test(type)) return null;
+  const title = row?.brief?.title || "";
+  const agency = row?.unit_name || "";
+  const caseNo = row?.job_number || "";
+  if (!title || !agency || !caseNo) return null;
+  const dateIso = normalizeDate(String(row.date || "").replace(/^(\d{4})(\d{2})(\d{2})$/, "$1/$2/$3"));
+  if (!dateIso) return null;
+  const category = row?.brief?.category || "";
+  const attr = /^(工程類|財物類|勞務類)/.exec(category)?.[1] || "其他";
+  const method = type.replace(/更正公告$/, "").replace(/公告$/, "") || type;
+  return {
+    kind: "tender",
+    periodStart: dateIso,
+    periodEnd: dateIso,
+    deadline: null,
+    agency,
+    caseNo,
+    title,
+    method,
+    attr,
+    region: inferRegion(agency, title),
+    sourceFile: `api:${dateIso.replace(/-/g, "")}`,
+  };
+}
+
 const COLUMNS = ["kind", "periodStart", "periodEnd", "deadline", "agency", "caseNo", "title", "method", "attr", "region", "sourceFile"];
 function toRow(r) { return COLUMNS.map((c) => r[c] ?? ""); }
 function fromRow(row) {
@@ -252,8 +309,7 @@ function loadAllRecords(index) {
     for (const row of part.rows || []) {
       const r = fromRow(row);
       const key = dedupKey(r);
-      const prev = map.get(key);
-      if (!prev || prev.periodStart < r.periodStart) map.set(key, r);
+      if (shouldReplace(map.get(key), r)) map.set(key, r);
     }
   }
   return map;
@@ -332,8 +388,7 @@ async function main() {
         const rec = normalizeRecord(raw, period, fileName, "tender");
         if (!rec) { attempt.recordsSkipped += 1; continue; }
         const key = dedupKey(rec);
-        const prev = all.get(key);
-        if (!prev || prev.periodStart <= rec.periodStart) {
+        if (shouldReplace(all.get(key), rec)) {
           all.set(key, rec);
           upserted += 1;
         }
@@ -363,6 +418,62 @@ async function main() {
           log(`探索 ${f} 失敗:${err.message}`);
         }
       }
+    }
+
+    // 3b. 每日完整公告(g0v/OpenFun 標案 API)——失敗只降級,不影響官方來源
+    attempt.daily = { status: "skipped", dates: 0, records: 0, error: null };
+    const processedDates = new Set(index.processedDates || []);
+    try {
+      let wantedDates = [];
+      let latestIso = null;
+      if (dailyFromDir) {
+        wantedDates = readdirSync(dailyFromDir)
+          .map((f) => /^listbydate_(\d{8})\.json$/.exec(f)?.[1])
+          .filter(Boolean).sort();
+        log(`離線模式:每日 API 讀取 ${dailyFromDir} 內 ${wantedDates.length} 天`);
+      } else if (!fromDir) {
+        const info = await fetchJsonWithRetry(`${DAILY_API_BASE}/getinfo`);
+        latestIso = String(info["最新資料時間"] || "").slice(0, 10);
+        if (!isValidIsoDate(latestIso)) throw new Error(`每日 API 未回報有效最新日期:${JSON.stringify(info).slice(0, 120)}`);
+        const refreshFrom = new Date(`${latestIso}T00:00:00Z`);
+        refreshFrom.setUTCDate(refreshFrom.getUTCDate() - DAILY_REFRESH_DAYS + 1);
+        const refreshFromYmd = refreshFrom.toISOString().slice(0, 10).replace(/-/g, "");
+        for (let i = 0; i < DAILY_DAYS; i++) {
+          const d = new Date(`${latestIso}T00:00:00Z`);
+          d.setUTCDate(d.getUTCDate() - i);
+          const ymd = d.toISOString().slice(0, 10).replace(/-/g, "");
+          if (!processedDates.has(ymd) || ymd >= refreshFromYmd) wantedDates.push(ymd);
+        }
+        wantedDates.sort();
+        log(`每日 API 最新資料日 ${latestIso},本次同步 ${wantedDates.length} 天`);
+      }
+      for (const ymd of wantedDates) {
+        const payload = dailyFromDir
+          ? JSON.parse(readFileSync(join(dailyFromDir, `listbydate_${ymd}.json`), "utf8"))
+          : await fetchJsonWithRetry(`${DAILY_API_BASE}/listbydate?date=${ymd}`);
+        const rows = payload.records || [];
+        let kept = 0;
+        for (const row of rows) {
+          const rec = normalizeDailyRecord(row);
+          if (!rec) continue;
+          const key = dedupKey(rec);
+          if (shouldReplace(all.get(key), rec)) {
+            all.set(key, rec);
+            kept += 1;
+          }
+        }
+        processedDates.add(ymd);
+        attempt.daily.dates += 1;
+        attempt.daily.records += kept;
+        log(`每日 ${ymd}:${rows.length} 筆公告,收錄招標類 ${kept} 筆`);
+        if (!dailyFromDir) await new Promise((r) => setTimeout(r, DAILY_REQUEST_GAP_MS));
+      }
+      if (attempt.daily.dates > 0 || wantedDates.length === 0) attempt.daily.status = "success";
+      index.processedDates = [...processedDates].sort().slice(-120);
+    } catch (err) {
+      attempt.daily.status = "failed";
+      attempt.daily.error = err.message;
+      log(`每日 API 同步失敗(不影響官方來源):${err.message}`);
     }
 
     if (all.size === 0) throw new Error("同步後資料為空,拒絕寫入(保留上一版)");
@@ -403,11 +514,12 @@ async function main() {
     index.filters = { attrs: [...attrs].sort(), methods: [...methods].sort(), regions: [...regionSet].sort() };
     index.source = LIST_URL;
     index.notes = {
-      period: "公告期間取自官方半月檔檔名(01=1–15日,02=16–月底),XML 內無精確公告日",
-      deadline: "官方 TENDER_SPDT(截止投標日)",
+      period: "公告期間取自官方半月檔檔名(01=1–15日,02=16–月底);每日 API 記錄為精確公告日(periodStart=periodEnd)",
+      deadline: "官方 TENDER_SPDT(截止投標日);每日 API 記錄不含截止日,可由詳情視窗即時查看",
       region: "依機關名稱與案名文字推定,官方 XML 無地區欄位",
-      coverage: "官方公開半月檔為部分標案,並非政府電子採購網全部公告",
-      dedup: "同一案(機關+案號+案名)出現在多個半月檔時保留最新期間版本",
+      coverage: "官方半月檔為部分標案;近 35 天招標公告另由 g0v/OpenFun 標案 API 補齊每日完整清單",
+      dedup: "同一案(機關+案號+案名)出現在多來源時,官方半月檔優先於每日 API;同來源取較新",
+      dailySource: DAILY_API_BASE,
     };
     writeJsonAtomic(INDEX_PATH, index);
     log(`同步成功:共 ${all.size} 筆(原 ${beforeCount} 筆),涵蓋 ${monthsMeta.length} 個月份`);
