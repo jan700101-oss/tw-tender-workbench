@@ -186,7 +186,13 @@ async function fetchText(url) {
 
 async function fetchJsonWithRetry(url, tries = 3) {
   const text = await fetchWithRetry(url, tries);
-  return JSON.parse(text);
+  const trimmed = text.trim();
+  // 該 API 偶爾會在 JSON 前輸出 PHP 警告文字,取結尾的 JSON 區塊解析
+  const jsonText = trimmed.startsWith("{") || trimmed.startsWith("[")
+    ? trimmed
+    : /(\{[\s\S]*\}|\[[\s\S]*\])\s*$/.exec(trimmed)?.[1];
+  if (!jsonText) throw new Error(`回應非 JSON:${trimmed.slice(0, 100).replace(/\s+/g, " ")}`);
+  return JSON.parse(jsonText);
 }
 
 async function fetchWithRetry(url, tries = 3) {

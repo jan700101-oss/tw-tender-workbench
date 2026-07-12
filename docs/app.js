@@ -170,7 +170,8 @@
     els.start.value = s.start || "";
     els.end.value = s.end || "";
     els.sort.value = s.sort || "period-desc";
-    els.open.checked = !!s.openOnly;
+    // 預設只看尚未截止:這個網站的目的是找還能投標的案子
+    els.open.checked = s.openOnly === undefined ? true : !!s.openOnly;
     els.customDates.hidden = els.range.value !== "custom";
   }
 
@@ -208,7 +209,7 @@
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
       if (minDate && r.periodEnd < minDate) return false;
       if (maxDate && r.periodStart > maxDate) return false;
-      if (s.openOnly) {
+      if (s.openOnly && currentTab !== "fav") { // 收藏分頁永遠顯示全部收藏
         // 每日 API 記錄不含截止日:公告 45 天內視為可能仍開放
         const maybeOpen = !r.deadline && r.sourceFile.startsWith("api:") &&
           (Date.parse(today) - Date.parse(r.periodStart)) / 86400000 <= 45;
