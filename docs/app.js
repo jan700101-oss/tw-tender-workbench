@@ -42,6 +42,7 @@
 
   let meta = null;
   let openMeta = null;
+  let validation = null;
   const monthCache = new Map(); // "YYYY-MM" -> records[]
   let currentTab = "all";
   let shown = 0;
@@ -116,10 +117,15 @@
 
   function renderSyncStatus() {
     if (openMeta) {
+      document.querySelector(".tagline").innerHTML = `最新可投標標案 · 資料直接來自 <a href="https://web.pcc.gov.tw/prkms/tender/common/basic/readTenderBasic" target="_blank" rel="noopener">政府電子採購網</a>`;
       document.querySelector(".site-footer p").textContent = "首頁案源直接取自政府電子採購網『等標期內』查詢；只顯示截止投標日尚未到期的案件。地區依機關名稱與案名推定，投標前請再核對政府原始公告。";
-      els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆`;
+      els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆 · 官方列表抽驗 ${validation?.officialRowsPassed || 0}/${validation?.officialRowsRequested || 0}`;
       const staleHours = (Date.now() - new Date(openMeta.generatedAt).getTime()) / 3600000;
-      if (staleHours > 36) {
+      if (!validation?.passed) {
+        els.banner.hidden = false;
+        els.banner.className = "sync-banner warn";
+        els.banner.textContent = "目前資料尚未通過官方公告驗證，請勿作為投標依據。";
+      } else if (staleHours > 36) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
         els.banner.textContent = "可投標案源超過 36 小時未更新，請先以政府電子採購網公告為準。";
@@ -301,7 +307,7 @@
           <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
           <span class="badge">${escapeHtml(r.method || "—")}</span>
           ${regionBadge}
-          <span class="badge announce">公告期間 ${periodLabel(r)}</span>
+          <span class="badge announce">公告日期 ${r.periodStart}</span>
           ${deadlineBadge(r, today)}
         </div>
         <div class="card-body">
@@ -511,9 +517,10 @@
     bindEvents();
     renderSavedChips();
     try {
-      [meta, openMeta] = await Promise.all([
+      [meta, openMeta, validation] = await Promise.all([
         fetchJson("data/index.json"),
-        fetchJson("data/open-tenders.json")
+        fetchJson("data/open-tenders.json"),
+        fetchJson("data/open-tenders-validation.json")
       ]);
       openTenders = openMeta.records || [];
       if (!meta.months || meta.months.length === 0) throw new Error("index 沒有月份資料");

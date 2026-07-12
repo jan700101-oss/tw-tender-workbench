@@ -38,7 +38,7 @@ function parseTitle(cell) {
   if (m) try { return JSON.parse(m[1]); } catch {}
   return text(cell).replace(/^\S+\s+\(更正公告\)\s*/,"").trim();
 }
-function parseRows(html) {
+function parseRows(html, sourcePage) {
   const rows=[];
   for (const match of html.matchAll(/<tr class="tb_b[23]">([\s\S]*?)<\/tr>/g)) {
     const cells=[...match[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m=>m[1]);
@@ -52,7 +52,7 @@ function parseRows(html) {
     const agency=text(cells[1]);
     rows.push({ kind:"tender", periodStart:announce, periodEnd:announce, deadline, agency, caseNo, title,
       method:text(cells[4]), attr:text(cells[5]), region:regions.find(r=>`${agency} ${title}`.includes(r)) || "地區未明", sourceFile:"政府採購網等標期內查詢",
-      officialUrl:href ? new URL(decode(href),ORIGIN).href : "", budget:text(cells[8]) });
+      officialUrl:href ? new URL(decode(href),ORIGIN).href : "", budget:text(cells[8]), sourcePage });
   }
   return rows;
 }
@@ -65,17 +65,17 @@ const total=Number(/共有<span class="red">\s*([\d,]+)\s*<\/span>筆資料/.exe
 const pageKey=/[?&](d-\d+-p)=2/.exec(first)?.[1];
 const perPage=50;
 const pages=Math.max(1,Math.ceil(total/perPage));
-const records=parseRows(first);
+const records=parseRows(first,1);
 console.log(`Official open-period result: ${total} records, ${pages} pages`);
 for(let page=2;page<=pages;page++) {
   const p=new URLSearchParams(params); p.set(pageKey || "d-49738-p",String(page));
   const html=await fetchHtml(`${SEARCH}?${p}`);
-  records.push(...parseRows(html));
+  records.push(...parseRows(html,page));
   if(page%10===0 || page===pages) console.log(`Fetched page ${page}/${pages}`);
   await new Promise(r=>setTimeout(r,300));
 }
 const unique=[...new Map(records.map(r=>[`${r.agency}|${r.caseNo}`,r])).values()]
   .sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
-const payload={version:2,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl};
+const payload={version:3,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl,pageKey};
 mkdirSync(dirname(OUT),{recursive:true}); writeFileSync(`${OUT}.tmp`,JSON.stringify(payload)); renameSync(`${OUT}.tmp`,OUT);
 console.log(`Saved ${unique.length} currently open tenders.`);
