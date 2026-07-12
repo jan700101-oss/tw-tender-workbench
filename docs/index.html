@@ -27,8 +27,7 @@
           <label><span>機關名稱</span><input id="agency" type="search" placeholder="輸入部分名稱即可"></label>
           <label><span>地區</span><select id="region"><option value="">所有地區</option></select></label>
           <label><span>採購類別</span><select id="category"><option value="">所有採購類別</option></select></label>
-          <label><span>招標方式</span><select id="method"><option value="">所有招標方式</option></select></label>
-          <label><span>截止狀態</span><select id="status"><option value="">全部狀態</option><option value="open">尚未截止</option><option value="closed">已截止</option></select></label>
+          <label><span>公告類型</span><select id="announcementType"><option value="">所有公告類型</option></select></label>
         </div>
         <div class="form-actions"><button id="clear" type="button" class="quiet">清除條件</button><button id="save" type="button" class="quiet">儲存目前條件</button><span id="saveStatus" role="status"></span></div>
       </form>
@@ -37,9 +36,9 @@
     <section class="result-head"><div><p id="resultCount">載入中</p><span id="range"></span></div><label>每頁顯示 <select id="pageSize"><option>25</option><option>50</option><option>100</option></select></label></section>
     <section id="results" class="results" aria-live="polite"><div id="loading" class="empty"><strong>正在準備標案資料</strong><span>第一次載入可能需要幾秒鐘。</span></div></section>
     <nav class="pagination" aria-label="搜尋結果分頁"><button id="prev" disabled>上一頁</button><span id="pageInfo">第 1 / 1 頁</span><button id="next" disabled>下一頁</button></nav>
-    <section class="notice"><strong>資料說明</strong><p>本站使用政府電子採購網公開 XML。截止投標日來自官方欄位；「官方資料期間」是資料所屬半月檔案期間，不等同精確公告日。實際投標資訊與最新更正內容，請以政府電子採購網單案頁為準。</p></section>
+    <section class="notice"><strong>資料說明</strong><p>本站逐日收錄政府電子採購網公告，包含招標、決標、無法決標、公開取得、公開徵求及公開閱覽等類型。資料由 openfunltd 標案資料 API 彙整；詳細內容與最新更正仍以政府電子採購網單案頁為準。</p></section>
   </main>
-  <footer>標案快搜 · 資料來源：行政院公共工程委員會政府電子採購網</footer>
+  <footer>標案快搜 · 原始資料：行政院公共工程委員會政府電子採購網 · API：openfunltd</footer>
   <script src="./app.js" defer></script>
 </body>
 </html>
