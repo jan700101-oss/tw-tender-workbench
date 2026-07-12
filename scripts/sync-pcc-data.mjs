@@ -32,6 +32,24 @@ function periodFromFile(fileName) {
   };
 }
 
+const regions = [
+  ["基隆市", ["基隆市", "基隆"]], ["臺北市", ["臺北市", "台北市", "臺北", "台北"]],
+  ["新北市", ["新北市", "新北"]], ["桃園市", ["桃園市", "桃園"]],
+  ["新竹市", ["新竹市"]], ["新竹縣", ["新竹縣"]], ["苗栗縣", ["苗栗縣", "苗栗"]],
+  ["臺中市", ["臺中市", "台中市", "臺中", "台中"]], ["彰化縣", ["彰化縣", "彰化"]],
+  ["南投縣", ["南投縣", "南投"]], ["雲林縣", ["雲林縣", "雲林"]],
+  ["嘉義市", ["嘉義市"]], ["嘉義縣", ["嘉義縣"]],
+  ["臺南市", ["臺南市", "台南市", "臺南", "台南"]], ["高雄市", ["高雄市", "高雄"]],
+  ["屏東縣", ["屏東縣", "屏東"]], ["宜蘭縣", ["宜蘭縣", "宜蘭"]],
+  ["花蓮縣", ["花蓮縣", "花蓮"]], ["臺東縣", ["臺東縣", "台東縣", "臺東", "台東"]],
+  ["澎湖縣", ["澎湖縣", "澎湖"]], ["金門縣", ["金門縣", "金門"]], ["連江縣", ["連江縣", "連江"]],
+];
+
+function inferRegion(agency, title) {
+  const text = `${agency} ${title}`;
+  return regions.find(([, aliases]) => aliases.some((alias) => text.includes(alias)))?.[0] || "地區未明";
+}
+
 async function fetchText(url) {
   const response = await fetch(url, { headers: { "user-agent": "tw-tender-search/1.0" } });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${url}`);
@@ -66,7 +84,7 @@ for (const [fileIndex, fileName] of selectedFiles.entries()) {
     if (!agency || !caseNo || !title || !period) continue;
     records.push({
       id: `${period.key}:${agency}:${caseNo}:${title}`,
-      title, agency, caseNo, method, category,
+      title, agency, caseNo, method, category, region: inferRegion(agency, title),
       deadline: /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? deadline : "",
       sourcePeriod: period.label,
       sourceFile: fileName,

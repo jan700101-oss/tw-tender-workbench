@@ -6,7 +6,7 @@ if (!Array.isArray(payload.records) || !payload.records.length) errors.push("資
 if (payload.meta.recordCount !== payload.records.length) errors.push("筆數摘要不一致");
 const ids = new Set();
 for (const [index, row] of payload.records.entries()) {
-  for (const key of ["id", "title", "agency", "caseNo", "category", "sourcePeriod", "officialUrl"]) if (!row[key]) errors.push(`第 ${index + 1} 筆缺少 ${key}`);
+  for (const key of ["id", "title", "agency", "caseNo", "category", "region", "sourcePeriod", "officialUrl"]) if (!row[key]) errors.push(`第 ${index + 1} 筆缺少 ${key}`);
   if (row.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(row.deadline)) errors.push(`日期格式錯誤：${row.deadline}`);
   if (!row.officialUrl.startsWith("https://web.pcc.gov.tw/")) errors.push(`非官方網址：${row.officialUrl}`);
   if (ids.has(row.id)) errors.push(`重複 id：${row.id}`);
