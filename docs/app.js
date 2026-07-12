@@ -121,6 +121,8 @@
       document.querySelector(".site-footer p").textContent = "首頁案源直接取自政府電子採購網『等標期內』查詢；只顯示截止投標日尚未到期的案件。地區依機關名稱與案名推定，投標前請再核對政府原始公告。";
       els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆 · 官方列表抽驗 ${validation?.officialRowsPassed || 0}/${validation?.officialRowsRequested || 0}`;
       const staleHours = (Date.now() - new Date(openMeta.generatedAt).getTime()) / 3600000;
+      const histAttempt = meta && meta.lastAttempt;
+      const histFailed = histAttempt && histAttempt.status !== "success";
       if (!validation?.passed) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
@@ -129,6 +131,10 @@
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
         els.banner.textContent = "可投標案源超過 36 小時未更新，請先以政府電子採購網公告為準。";
+      } else if (histFailed) {
+        els.banner.hidden = false;
+        els.banner.className = "sync-banner warn";
+        els.banner.textContent = `⚠ 歷史資料最近一次同步失敗(${fmtTime(histAttempt.at)}):${histAttempt.error || "未知錯誤"}。可投標案源不受影響,歷史檢視顯示上一版資料。`;
       } else {
         els.banner.hidden = true;
       }
@@ -539,12 +545,7 @@
     bindEvents();
     renderSavedChips();
     try {
-      [meta, openMeta, validation] = await Promise.all([
-        fetchJson("data/index.json"),
-        fetchJson("data/open-tenders.json"),
-        fetchJson("data/open-tenders-validation.json")
-      ]);
-      openTenders = openMeta.records || [];
+      meta = await fetchJson("data/index.json");
       if (!meta.months || meta.months.length === 0) throw new Error("index 沒有月份資料");
     } catch (err) {
       showEmpty("資料尚未同步或載入失敗。請先執行一次同步(GitHub Actions「每日同步標案資料」),或稍後再試。");
@@ -552,9 +553,23 @@
       console.error(err);
       return;
     }
+    // 可投標案源載入失敗時退回歷史檢視,不讓整站掛掉
+    try {
+      [openMeta, validation] = await Promise.all([
+        fetchJson("data/open-tenders.json"),
+        fetchJson("data/open-tenders-validation.json"),
+      ]);
+      openTenders = openMeta.records || [];
+    } catch (err) {
+      openMeta = null;
+      validation = null;
+      openTenders = [];
+      console.error("可投標案源載入失敗,退回歷史檢視", err);
+    }
     populateFilterOptions();
     renderSyncStatus();
-    setFilterState({ openOnly: true, sort: "deadline-asc" });
+    const hasOpen = openTenders.length > 0;
+    setFilterState(hasOpen ? { openOnly: true, sort: "deadline-asc" } : { openOnly: false });
     await applyFilters();
   }
 
