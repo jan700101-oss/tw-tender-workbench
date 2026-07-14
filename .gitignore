@@ -7,3 +7,6 @@ outputs/pcc-update.log
 # Playwright MCP 執行時的暫存輸出(快照、頁面 YAML 等)
 .playwright-mcp/
 
+# Memory MCP 知識圖譜資料(預設不追蹤;若要跨 session 保存可自行納入版控)
+.memory/
+

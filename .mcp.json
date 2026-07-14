@@ -13,6 +13,16 @@
         "--executable-path",
         "/opt/pw-browsers/chromium"
       ]
+    },
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "/home/user/tw-tender-workbench/.memory/memory.json"
+      }
     }
   }
 }
