@@ -4,3 +4,6 @@ outputs/pcc-update.log
 *.tmp
 *.log
 
+# Playwright MCP 執行時的暫存輸出(快照、頁面 YAML 等)
+.playwright-mcp/
+
