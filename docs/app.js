@@ -335,7 +335,7 @@
           <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
           <span class="badge">${escapeHtml(r.method || "—")}</span>
           ${regionBadge}
-          <span class="badge announce">公告日期 ${r.periodStart}</span>
+          <span class="badge announce">${periodLabel(r)}</span>
           ${deadlineBadge(r, today)}
         </div>
         <div class="card-body">
@@ -347,7 +347,7 @@
             ? `<a class="detail-trigger" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">查看官方完整詳情</a>`
             : `<button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>`}
           <a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢</a>
-          ${r.sourceFile?.endsWith(".xml") ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源檔 ${escapeHtml(r.sourceFile)}</a>` : ""}
+          ${r.sourceFile?.endsWith(".xml") || isDailyRecord(r) ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源 ${escapeHtml(sourceLabel(r))}</a>` : ""}
         </div>`;
       frag.appendChild(li);
     }

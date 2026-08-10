@@ -7,3 +7,8 @@ outputs/pcc-update.log
 # Playwright MCP 執行時的暫存輸出(快照、頁面 YAML 等)
 .playwright-mcp/
 
+# 本機獨立工具與瀏覽器測試輸出
+local-apps/
+.playwright-cli/
+output/playwright/
+
