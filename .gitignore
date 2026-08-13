@@ -11,4 +11,6 @@ outputs/pcc-update.log
 local-apps/
 .playwright-cli/
 output/playwright/
+dist/
+.sites/
 

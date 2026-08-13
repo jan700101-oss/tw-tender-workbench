@@ -1,0 +1,12 @@
+{
+  "name": "tw-tender-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-sites.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
