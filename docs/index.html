@@ -3,99 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>標案工務台 — 政府標案搜尋</title>
-<meta name="description" content="臺灣政府採購標案搜尋:每日同步政府電子採購網公開資料,可搜尋、篩選、收藏。">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css">
+<meta name="theme-color" content="#12382f">
+<title>標案工務台｜每天找到值得投的政府標案</title>
+<meta name="description" content="搜尋臺灣政府採購標案，快速比較截止日、預算、類別與地區，收藏值得投標的案件。資料每日同步自政府電子採購網。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="標案工務台｜每天找到值得投的案子">
+<meta property="og:description" content="把數千筆政府標案整理成今天就能行動的工作清單。">
+<meta property="og:url" content="https://jan700101-oss.github.io/tw-tender-workbench/">
+<meta property="og:image" content="https://jan700101-oss.github.io/tw-tender-workbench/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="標案工務台｜每天找到值得投的案子">
+<meta name="twitter:description" content="搜尋、篩選、比較與收藏臺灣政府採購標案。">
+<meta name="twitter:image" content="https://jan700101-oss.github.io/tw-tender-workbench/og.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2312382f'/%3E%3Cpath d='M28 25h44v55H28z' fill='%23f4f0e7'/%3E%3Cpath d='M37 41h26M37 53h26M37 65h17' stroke='%23f26a3d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css?v=202608130907">
 </head>
 <body>
+<a class="skip-link" href="#results-heading">跳到搜尋結果</a>
+
 <header class="site-header">
-  <div class="wrap">
-    <h1>標案工務台</h1>
-    <p class="tagline">政府標案搜尋 · 資料來自<a href="https://web.pcc.gov.tw/tps/tp/OpenData/showList" target="_blank" rel="noopener">政府電子採購網公開資料</a></p>
+  <div class="wrap topbar">
+    <a class="brand" href="./" aria-label="標案工務台首頁">
+      <span class="brand-mark" aria-hidden="true">標</span>
+      <span><strong>標案工務台</strong><small>臺灣政府採購搜尋</small></span>
+    </a>
+    <div class="header-actions">
+      <span id="header-data-status" class="data-status">資料載入中</span>
+      <a class="source-link" href="https://web.pcc.gov.tw/" target="_blank" rel="noopener">政府採購網 ↗</a>
+    </div>
   </div>
 </header>
 
-<div class="wrap">
-  <div id="sync-banner" class="sync-banner" hidden></div>
-
-  <section class="controls" aria-label="搜尋與篩選">
-    <div class="row">
-      <input id="q" type="search" placeholder="搜尋案名、案號、機關(空白分隔多個關鍵字,前面加 - 可排除)" autocomplete="off">
-    </div>
-    <div class="row filters">
-      <div class="field">
-        <label for="f-attr">類別</label>
-        <select id="f-attr"><option value="">全部</option></select>
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">TENDER OPPORTUNITY DESK</p>
+        <h1>每天找到<br><em>值得投</em>的案子</h1>
+        <p class="hero-lede">不用再翻幾十頁公告。從截止日、預算、類別與地區切入，把今天該看的標案先找出來。</p>
       </div>
-      <div class="field">
-        <label for="f-method">招標方式</label>
-        <select id="f-method"><option value="">全部</option></select>
+      <div class="search-panel" role="search">
+        <label for="q">你想找什麼案子？</label>
+        <div class="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input id="q" type="search" placeholder="例如：道路工程、冷氣、設計服務" autocomplete="off" spellcheck="false">
+          <kbd>搜尋</kbd>
+        </div>
+        <p class="search-help">可搜案名、案號、機關；空白代表同時包含，輸入 <code>-關鍵字</code> 可排除。</p>
+        <div class="quick-categories" aria-label="快速選擇類別">
+          <button class="quick-category active" type="button" data-attr="">全部案源</button>
+          <button class="quick-category" type="button" data-attr="工程類">工程</button>
+          <button class="quick-category" type="button" data-attr="財物類">財物</button>
+          <button class="quick-category" type="button" data-attr="勞務類">勞務</button>
+        </div>
       </div>
-      <div class="field">
-        <label for="f-region">地區(推定)</label>
-        <select id="f-region"><option value="">全部</option></select>
-      </div>
-      <div class="field">
-        <label for="f-agency">機關</label>
-        <input id="f-agency" type="search" placeholder="機關名稱關鍵字" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="f-range">公告期間</label>
-        <select id="f-range">
-          <option value="3">近 3 個月</option>
-          <option value="6">近 6 個月</option>
-          <option value="12">近 12 個月</option>
-          <option value="all">全部歷史</option>
-          <option value="custom">自訂範圍</option>
-        </select>
-      </div>
-      <div class="field custom-dates" id="custom-dates" hidden>
-        <label for="f-start">起</label>
-        <input id="f-start" type="date">
-        <label for="f-end">迄</label>
-        <input id="f-end" type="date">
-      </div>
-      <div class="field">
-        <label for="f-sort">排序</label>
-        <select id="f-sort">
-          <option value="period-desc">公告期間:新 → 舊</option>
-          <option value="deadline-asc">截止日:近 → 遠</option>
-        </select>
-      </div>
-      <label class="check"><input id="f-open" type="checkbox" checked>僅顯示尚未截止（可投標）</label>
-    </div>
-    <div class="row saved">
-      <button id="btn-save-search" class="btn" type="button">儲存目前條件</button>
-      <button id="btn-clear" class="btn subtle" type="button">清除條件</button>
-      <div id="saved-chips" class="chips"></div>
     </div>
   </section>
 
-  <nav class="tabs" role="tablist">
-    <button id="tab-all" class="tab active" role="tab" aria-selected="true" type="button">全部結果</button>
-    <button id="tab-fav" class="tab" role="tab" aria-selected="false" type="button">★ 我的收藏 <span id="fav-count"></span></button>
-  </nav>
+  <div class="wrap workspace">
+    <section class="snapshot" aria-label="今日標案摘要">
+      <article><span>目前可投標</span><strong id="stat-open">—</strong><small>件</small></article>
+      <article><span>今日新公告</span><strong id="stat-today">—</strong><small>件</small></article>
+      <article class="urgent-stat"><span>3 天內截止</span><strong id="stat-urgent">—</strong><small>件</small></article>
+      <article><span>工程類案件</span><strong id="stat-engineering">—</strong><small>件</small></article>
+    </section>
 
-  <p id="result-count" class="result-count" role="status"></p>
-  <ul id="results" class="results"></ul>
-  <div class="load-more-wrap"><button id="btn-more" class="btn" type="button" hidden>載入更多</button></div>
+    <div id="sync-banner" class="sync-banner" role="status" hidden></div>
+
+    <section class="controls" aria-labelledby="filter-heading">
+      <div class="section-heading">
+        <div><p class="section-kicker">FILTERS</p><h2 id="filter-heading">縮小搜尋範圍</h2></div>
+        <button id="btn-clear" class="text-button" type="button">清除全部條件</button>
+      </div>
+      <div class="filters">
+        <div class="field">
+          <label for="f-attr">採購類別</label>
+          <select id="f-attr"><option value="">全部類別</option></select>
+        </div>
+        <div class="field">
+          <label for="f-region">履約地區（推定）</label>
+          <select id="f-region"><option value="">全部地區</option></select>
+        </div>
+        <div class="field field-wide">
+          <label for="f-agency">招標機關</label>
+          <input id="f-agency" type="search" placeholder="輸入機關名稱" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="f-method">招標方式</label>
+          <select id="f-method"><option value="">全部方式</option></select>
+        </div>
+        <div class="field">
+          <label for="f-range">公告期間</label>
+          <select id="f-range">
+            <option value="3">近 3 個月</option>
+            <option value="6">近 6 個月</option>
+            <option value="12">近 12 個月</option>
+            <option value="all">全部歷史</option>
+            <option value="custom">自訂範圍</option>
+          </select>
+        </div>
+        <div class="field custom-dates" id="custom-dates" hidden>
+          <label for="f-start">開始</label><input id="f-start" type="date">
+          <label for="f-end">結束</label><input id="f-end" type="date">
+        </div>
+        <div class="field">
+          <label for="f-sort">排序方式</label>
+          <select id="f-sort">
+            <option value="deadline-asc">最接近截止</option>
+            <option value="period-desc">最新公告優先</option>
+            <option value="budget-desc">預算由高到低</option>
+          </select>
+        </div>
+      </div>
+      <div class="filter-footer">
+        <label class="check"><input id="f-open" type="checkbox" checked><span>只看目前可投標案件</span></label>
+        <div class="saved-actions">
+          <button id="btn-save-search" class="btn secondary" type="button">＋ 儲存這組條件</button>
+          <div id="saved-chips" class="chips" aria-label="已儲存的搜尋條件"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="results-section" aria-labelledby="results-heading">
+      <div class="results-toolbar">
+        <div>
+          <p class="section-kicker">OPPORTUNITIES</p>
+          <h2 id="results-heading">值得查看的標案</h2>
+        </div>
+        <nav class="tabs" role="tablist" aria-label="結果類型">
+          <button id="tab-all" class="tab active" role="tab" aria-selected="true" type="button">搜尋結果</button>
+          <button id="tab-fav" class="tab" role="tab" aria-selected="false" type="button">我的收藏 <span id="fav-count"></span></button>
+        </nav>
+      </div>
+      <p id="result-count" class="result-count" role="status" aria-live="polite">正在載入最新案源…</p>
+      <ul id="results" class="results"></ul>
+      <div class="load-more-wrap"><button id="btn-more" class="btn load-more" type="button" hidden>載入更多</button></div>
+      <section id="empty-state" class="empty-state" hidden></section>
+    </section>
+  </div>
+
   <dialog id="detail-dialog"><div id="detail-content" class="detail-loading">正在載入標案詳情…</div></dialog>
-
-  <section id="empty-state" class="empty-state" hidden></section>
-</div>
+</main>
 
 <footer class="site-footer">
-  <div class="wrap">
-    <p>歷史資料同步自政府電子採購網公開半月檔 XML(官方提供之部分標案,顯示「公告期間」);
-       近 35 天招標公告另由 <a href="https://pcc-api.openfun.app/" target="_blank" rel="noopener">g0v/OpenFun 標案 API</a>
-       補齊每日完整清單(顯示精確「公告日」,截止日可在詳情視窗查看)。
-       地區為依機關名稱與案名文字推定,僅供篩選參考。
-       投標前請以<a href="https://web.pcc.gov.tw/" target="_blank" rel="noopener">政府電子採購網</a>正式公告為準。</p>
-    <p id="footer-sync"></p>
+  <div class="wrap footer-grid">
+    <div><strong>標案工務台</strong><p>把公開資料整理成可搜尋、可比較、可收藏的投標工作清單。</p></div>
+    <div class="footer-note">
+      <p>案源直接取自政府電子採購網「等標期內」查詢；地區由機關名稱與案名推定。投標前請以政府原始公告為準。</p>
+      <p id="footer-sync"></p>
+    </div>
   </div>
 </footer>
 
-<script src="app.js"></script>
+<noscript><div class="no-script">此網站需要 JavaScript 才能搜尋標案，請啟用後重新整理。</div></noscript>
+<script src="app.js?v=202608130907"></script>
 </body>
 </html>

@@ -54,6 +54,7 @@ docs/             靜態網站(GitHub Pages),依查詢範圍延遲載入月份�
 手動執行(任何有 Node.js 20+ 的電腦):
 
 ```
+./scripts/update-pcc-data.ps1     # Windows：更新目前可投標案件、驗證並保留失敗前版本
 node scripts/sync.mjs            # 正式同步(需可連線 web.pcc.gov.tw)
 node scripts/sync.mjs --discover # 額外輸出欄位樣本與官方資料集描述
 git add docs/data && git commit -m "更新標案資料" && git push

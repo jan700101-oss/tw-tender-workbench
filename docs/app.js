@@ -14,6 +14,11 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     banner: $("sync-banner"),
+    headerStatus: $("header-data-status"),
+    statOpen: $("stat-open"),
+    statToday: $("stat-today"),
+    statUrgent: $("stat-urgent"),
+    statEngineering: $("stat-engineering"),
     q: $("q"),
     attr: $("f-attr"),
     method: $("f-method"),
@@ -115,10 +120,37 @@
     }).format(new Date(iso));
   }
 
+  const numberFormat = new Intl.NumberFormat("zh-TW");
+
+  function addDays(iso, days) {
+    const date = new Date(`${iso}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function budgetNumber(value) {
+    const digits = String(value || "").replace(/[^0-9]/g, "");
+    return digits ? Number(digits) : 0;
+  }
+
+  function formatBudget(value) {
+    const amount = budgetNumber(value);
+    return amount ? `NT$ ${numberFormat.format(amount)}` : "未提供";
+  }
+
+  function renderStats() {
+    const today = todayIso();
+    const urgentEnd = addDays(today, 3);
+    const current = openTenders.filter((r) => r.deadline >= today);
+    els.statOpen.textContent = numberFormat.format(current.length);
+    els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
+    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= urgentEnd).length);
+    els.statEngineering.textContent = numberFormat.format(current.filter((r) => r.attr === "工程類").length);
+  }
+
   function renderSyncStatus() {
     if (openMeta) {
-      document.querySelector(".tagline").innerHTML = `最新可投標標案 · 資料直接來自 <a href="https://web.pcc.gov.tw/prkms/tender/common/basic/readTenderBasic" target="_blank" rel="noopener">政府電子採購網</a>`;
-      document.querySelector(".site-footer p").textContent = "首頁案源直接取自政府電子採購網『等標期內』查詢；只顯示截止投標日尚未到期的案件。地區依機關名稱與案名推定，投標前請再核對政府原始公告。";
+      els.headerStatus.textContent = `更新 ${fmtTime(openMeta.generatedAt)}`;
       els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆 · 官方列表抽驗 ${validation?.officialRowsPassed || 0}/${validation?.officialRowsRequested || 0}`;
       const staleHours = (Date.now() - new Date(openMeta.generatedAt).getTime()) / 3600000;
       const histAttempt = meta && meta.lastAttempt;
@@ -147,6 +179,7 @@
     if (ok) staleDays = Math.floor((Date.now() - new Date(ok.at).getTime()) / 86400000);
 
     if (ok) {
+      els.headerStatus.textContent = `更新 ${fmtTime(ok.at)}`;
       els.footerSync.textContent =
         `最後成功同步:${fmtTime(ok.at)}(台北時間) · 共 ${ok.totalRecords} 筆 · 涵蓋 ${meta.months.length} 個月份`;
     }
@@ -199,6 +232,15 @@
     els.sort.value = s.sort || "period-desc";
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
+    updateQuickCategoryState();
+  }
+
+  function updateQuickCategoryState() {
+    document.querySelectorAll(".quick-category").forEach((button) => {
+      const active = button.dataset.attr === els.attr.value;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
   }
 
   async function applyFilters() {
@@ -258,6 +300,9 @@
         if (!b.deadline) return -1;
         return a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : 0;
       });
+    } else if (s.sort === "budget-desc") {
+      filtered.sort((a, b) => budgetNumber(b.budget) - budgetNumber(a.budget) ||
+        b.periodStart.localeCompare(a.periodStart));
     } else {
       filtered.sort((a, b) =>
         a.periodStart < b.periodStart ? 1 : a.periodStart > b.periodStart ? -1 :
@@ -282,7 +327,7 @@
   }
 
   function isDailyRecord(r) {
-    return r.sourceFile.startsWith("api:");
+    return r.sourceFile?.startsWith("api:") || false;
   }
 
   function sourceFileUrl(r) {
@@ -303,17 +348,16 @@
     return `公告期間 ${y}/${m}/${Number(d1)}–${Number(d2)}`;
   }
 
-  function deadlineBadge(r, today) {
-    if (!r.deadline && isDailyRecord(r)) return `<span class="badge muted">截止日見詳情</span>`;
-    if (!r.deadline) return `<span class="badge muted">截止日未提供</span>`;
-    if (r.deadline < today) return `<span class="badge closed">已截止 ${r.deadline}</span>`;
+  function deadlineInfo(r, today) {
+    if (!r.deadline) return { date: "詳情確認", label: isDailyRecord(r) ? "截止日見詳情" : "截止日未提供", cls: "" };
     const days = Math.round((new Date(`${r.deadline}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
-    const cls = days <= 3 ? "urgent" : "open";
-    return `<span class="badge ${cls}">截止 ${r.deadline}(剩 ${days} 天)</span>`;
+    if (days < 0) return { date: r.deadline, label: `已截止 ${Math.abs(days)} 天`, cls: "closed" };
+    if (days === 0) return { date: r.deadline, label: "今天截止", cls: "urgent" };
+    return { date: r.deadline, label: `剩 ${days} 天`, cls: days <= 3 ? "urgent" : "" };
   }
 
   function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
   function renderMore() {
@@ -322,33 +366,38 @@
     const frag = document.createDocumentFragment();
     for (const r of batch) {
       const key = recordKey(r);
+      const deadline = deadlineInfo(r, today);
       const li = document.createElement("li");
       li.className = "card";
       const regionBadge = r.region && r.region !== "地區未明"
-        ? `<span class="badge">${escapeHtml(r.region)}(推定)</span>` : "";
+        ? `<span class="badge region">${escapeHtml(r.region)}（推定）</span>` : "";
       li.innerHTML = `
-        <div class="card-head">
-          <a class="title" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
-          <button class="fav ${favorites[key] ? "on" : ""}" type="button" title="收藏" aria-pressed="${!!favorites[key]}" data-key="${escapeHtml(key)}">★</button>
+        <div class="card-main">
+          <div class="card-kicker">
+            <span>${escapeHtml(r.agency || "機關未提供")}</span><span aria-hidden="true">·</span>
+            <span class="case-no">案號 <button class="copy" type="button" data-copy="${escapeHtml(r.caseNo)}" title="複製案號">${escapeHtml(r.caseNo)} ⧉</button></span>
+          </div>
+          <div class="card-title-row">
+            <a class="title" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">${escapeHtml(r.title || "未命名標案")}</a>
+            <button class="fav ${favorites[key] ? "on" : ""}" type="button" title="${favorites[key] ? "取消收藏" : "收藏標案"}" aria-label="${favorites[key] ? "取消收藏" : "收藏"} ${escapeHtml(r.title)}" aria-pressed="${!!favorites[key]}" data-key="${escapeHtml(key)}">★</button>
+          </div>
+          <div class="card-meta">
+            <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
+            <span class="badge">${escapeHtml(r.method || "招標方式未提供")}</span>
+            ${regionBadge}
+            <span class="badge">${periodLabel(r)}</span>
+          </div>
+          <div class="card-links">
+            ${r.officialUrl
+              ? `<a class="primary-link" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">查看政府原始公告 ↗</a>`
+              : `<button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button><a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢 ↗</a>`}
+            ${r.sourceFile?.endsWith(".xml") || isDailyRecord(r) ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">檢視資料來源</a>` : ""}
+          </div>
         </div>
-        <div class="card-meta">
-          <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
-          <span class="badge">${escapeHtml(r.method || "—")}</span>
-          ${regionBadge}
-          <span class="badge announce">${periodLabel(r)}</span>
-          ${deadlineBadge(r, today)}
-        </div>
-        <div class="card-body">
-          <span class="agency">${escapeHtml(r.agency)}</span>
-          <span class="case-no">案號 <button class="copy" type="button" data-copy="${escapeHtml(r.caseNo)}" title="複製案號">${escapeHtml(r.caseNo)} ⧉</button></span>
-        </div>
-        <div class="card-links">
-          ${r.officialUrl
-            ? `<a class="detail-trigger" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">查看官方完整詳情</a>`
-            : `<button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button>`}
-          <a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢</a>
-          ${r.sourceFile?.endsWith(".xml") || isDailyRecord(r) ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">來源 ${escapeHtml(sourceLabel(r))}</a>` : ""}
-        </div>`;
+        <aside class="card-decision" aria-label="案件時程與預算">
+          <div><span class="decision-label">截止投標</span><strong class="deadline-date">${escapeHtml(deadline.date)}</strong><span class="deadline-days ${deadline.cls}">${escapeHtml(deadline.label)}</span></div>
+          <div class="budget"><span class="decision-label">採購預算</span><strong>${escapeHtml(formatBudget(r.budget))}</strong></div>
+        </aside>`;
       frag.appendChild(li);
     }
     els.results.appendChild(frag);
@@ -371,7 +420,8 @@
       return;
     }
     els.empty.hidden = true;
-    els.count.textContent = `${filtered.length} 筆結果`;
+    const showing = Math.min(shown, filtered.length);
+    els.count.textContent = `共 ${numberFormat.format(filtered.length)} 筆結果，目前顯示 ${numberFormat.format(showing)} 筆`;
   }
 
   async function openDetail({ caseNo, title, agency }) {
@@ -445,9 +495,17 @@
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
-    for (const el of [els.attr, els.method, els.region, els.sort, els.open, els.start, els.end]) {
+    for (const el of [els.method, els.region, els.sort, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
+    els.attr.addEventListener("change", () => { updateQuickCategoryState(); applyFilters(); });
+    document.querySelectorAll(".quick-category").forEach((button) => {
+      button.addEventListener("click", () => {
+        els.attr.value = button.dataset.attr;
+        updateQuickCategoryState();
+        applyFilters();
+      });
+    });
     els.range.addEventListener("change", () => {
       els.customDates.hidden = els.range.value !== "custom";
       applyFilters();
@@ -456,7 +514,7 @@
       setFilterState({});
       applyFilters();
     });
-    els.more.addEventListener("click", renderMore);
+    els.more.addEventListener("click", () => { renderMore(); renderCount(); });
 
     els.saveSearch.addEventListener("click", () => {
       const state = getFilterState();
@@ -506,7 +564,7 @@
       }
       const copyBtn = e.target.closest("button.copy");
       if (copyBtn) {
-        navigator.clipboard?.writeText(copyBtn.dataset.copy).then(() => {
+        copyText(copyBtn.dataset.copy).then(() => {
           copyBtn.classList.add("copied");
           setTimeout(() => copyBtn.classList.remove("copied"), 800);
         });
@@ -515,6 +573,18 @@
     els.detailDialog.addEventListener("click", (e) => {
       if (e.target.closest(".detail-close") || e.target === els.detailDialog) els.detailDialog.close();
     });
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
   }
 
   function switchTab(tab) {
@@ -535,9 +605,10 @@
         sel.appendChild(opt);
       }
     };
-    add(els.attr, meta.filters?.attrs);
-    add(els.method, meta.filters?.methods);
-    add(els.region, meta.filters?.regions);
+    const merged = (metaValues, key) => [...new Set([...(metaValues || []), ...openTenders.map((r) => r[key]).filter(Boolean)])].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    add(els.attr, merged(meta.filters?.attrs, "attr"));
+    add(els.method, merged(meta.filters?.methods, "method"));
+    add(els.region, merged(meta.filters?.regions, "region"));
   }
 
   // ---------- 啟動 ----------
@@ -566,6 +637,7 @@
       openTenders = [];
       console.error("可投標案源載入失敗,退回歷史檢視", err);
     }
+    renderStats();
     populateFilterOptions();
     renderSyncStatus();
     const hasOpen = openTenders.length > 0;
