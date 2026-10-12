@@ -494,6 +494,10 @@
       <label class="field detail-field wide">紀錄與待確認事項<textarea name="notes" rows="4" maxlength="10000">${escapeHtml(item.notes)}</textarea></label></div>
       <fieldset class="work-tasks"><legend>投標與履約準備</legend>${taskLabels.map((label,i) => `<label class="check"><input type="checkbox" name="task" value="${i}"${item.tasks?.includes(i) ? " checked" : ""}>${label}</label>`).join("")}</fieldset>
       <div class="detail-actions"><button class="btn" type="submit">保存並加入追蹤</button><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener">核對官方公告 ↗</a></div><p id="work-status" role="status"></p></form>`;
+    const docLink = document.createElement('a');
+    docLink.className = 'btn secondary'; docLink.textContent = '帶入本機文件助理（須先啟動整合版）';
+    docLink.href = `http://127.0.0.1:8796/?tender=${encodeURIComponent(JSON.stringify({ title:r.title, attr:r.attr, officialUrl:officialSearchUrl(r) }))}`;
+    docLink.target = '_blank'; docLink.rel = 'noopener'; els.detailContent.appendChild(docLink);
     els.detailDialog.showModal();
     $("work-form").addEventListener("submit", e => {
       e.preventDefault(); const form = new FormData(e.target);

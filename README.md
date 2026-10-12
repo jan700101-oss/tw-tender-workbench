@@ -1,5 +1,30 @@
 # 標案工務台
 
+## 2026-10-12 整合版入口
+
+公開搜尋與追蹤：https://jan700101-oss.github.io/tw-tender-workbench/
+
+本機整合版（搜尋、追蹤、文件上傳與草稿整理共用入口）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-workbench.ps1
+```
+
+開啟 http://127.0.0.1:8796/tenders/ 。點任一標案「投標工作清單」，可保存進度、負責人、追蹤日期與準備項目，並帶入文件助理。文件助理沿用既有 `ai-tender-document-assistant` 專案，原案件仍在該專案 `cases/`，沒有搬移或刪除。啟動腳本依相鄰專案位置尋找文件助理，也可指定 `-AssistantRoot`。
+
+文件助理可上傳 PDF、DOCX、XLSX、TXT，抽取文字並生成六類 Markdown 草稿，支援 Word 匯出。預設是免費本機規則整理（非 AI），會摘錄來源並標示待確認；OpenAI/Ollama 是選用模式，外部 AI 尚未完成真實連線驗收。
+
+公開網站的追蹤與工作紀錄保存在瀏覽器，請使用「備份追蹤與工作紀錄」及「合併匯入備份」跨裝置保存；文件助理的案件保存在本機硬碟。兩者共用案件來源連結，但尚非多人雲端資料庫。清除瀏覽器資料前必須先備份。
+
+最新可投標來源為官方等標期查詢，更新指令如下；失敗時保留上一版：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-pcc-data.ps1
+node --check docs\app.js
+```
+
+歷史資料與目前可投標是兩種來源；以下原架構說明主要描述歷史層。完整整合驗收與限制見 `outputs/integration-status.md`。
+
 臺灣政府標案搜尋網站:每日同步政府電子採購網公開資料,提供比官方網站好用的搜尋、篩選與收藏。
 
 網站:https://jan700101-oss.github.io/tw-tender-workbench/
