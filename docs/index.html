@@ -16,7 +16,7 @@
 <meta name="twitter:description" content="搜尋、篩選、比較與收藏臺灣政府採購標案。">
 <meta name="twitter:image" content="https://jan700101-oss.github.io/tw-tender-workbench/og.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2312382f'/%3E%3Cpath d='M28 25h44v55H28z' fill='%23f4f0e7'/%3E%3Cpath d='M37 41h26M37 53h26M37 65h17' stroke='%23f26a3d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=202610090805">
+<link rel="stylesheet" href="styles.css?v=202610121153">
 </head>
 <body>
 <a class="skip-link" href="#results-heading">跳到搜尋結果</a>
@@ -114,8 +114,10 @@
             <option value="budget-desc">預算由高到低</option>
           </select>
         </div>
+        <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></select></div>
       </div>
       <div class="filter-footer">
+        <button id="btn-engineering" class="btn secondary" type="button">中小型工程：1 億以下</button>
         <label class="check"><input id="f-open" type="checkbox" checked><span>只看目前可投標案件</span></label>
         <div class="saved-actions">
           <button id="btn-save-search" class="btn secondary" type="button">＋ 儲存這組條件</button>
@@ -132,9 +134,16 @@
         </div>
         <nav class="tabs" role="tablist" aria-label="結果類型">
           <button id="tab-all" class="tab active" role="tab" aria-selected="true" type="button">搜尋結果</button>
-          <button id="tab-fav" class="tab" role="tab" aria-selected="false" type="button">我的收藏 <span id="fav-count"></span></button>
+          <button id="tab-fav" class="tab" role="tab" aria-selected="false" type="button">我的追蹤 <span id="fav-count"></span></button>
         </nav>
       </div>
+      <div class="workspace-actions" aria-label="工作資料管理">
+        <button id="btn-export" class="btn secondary" type="button">匯出目前清單 CSV</button>
+        <button id="btn-backup" class="btn secondary" type="button">備份追蹤與工作紀錄</button>
+        <label class="btn secondary" for="backup-file">合併匯入備份</label>
+        <input id="backup-file" type="file" accept="application/json,.json" hidden>
+      </div>
+      <p class="work-notice">按 ★ 追蹤案件，開啟「投標工作清單」保存進度、負責人與追蹤日期。資料儲存在此瀏覽器；換裝置前請備份。</p>
       <p id="result-count" class="result-count" role="status" aria-live="polite">正在載入最新案源…</p>
       <ul id="results" class="results"></ul>
       <div class="load-more-wrap"><button id="btn-more" class="btn load-more" type="button" hidden>載入更多</button></div>
@@ -156,6 +165,6 @@
 </footer>
 
 <noscript><div class="no-script">此網站需要 JavaScript 才能搜尋標案，請啟用後重新整理。</div></noscript>
-<script src="app.js?v=202610090805"></script>
+<script src="app.js?v=202610121153"></script>
 </body>
 </html>
