@@ -10,6 +10,9 @@
   const PAGE_SIZE = 100;
   const FAV_KEY = "twb.favorites.v2";
   const SEARCH_KEY = "twb.savedSearches.v2";
+  const WORK_KEY = "twb.work.v1";
+  const stages = ["評估中", "準備投標", "已送件", "履約中", "驗收保固", "不投標"];
+  const taskLabels = ["核對官方公告與更正", "下載投標須知、契約與圖說", "確認資格、證照與實績", "確認現勘與提問期限", "確認押標金與資金", "完成估價與標價清單", "確認用印、封裝、送件時間", "開工、材料送審與施工紀錄", "竣工、驗收與保固文件"];
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -29,6 +32,7 @@
     start: $("f-start"),
     end: $("f-end"),
     sort: $("f-sort"),
+    budget: $("f-budget"),
     open: $("f-open"),
     saveSearch: $("btn-save-search"),
     clear: $("btn-clear"),
@@ -63,18 +67,24 @@
     } catch { return fallback; }
   }
   function saveJson(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* 隱私模式可能失敗 */ }
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+    catch { alert("瀏覽器無法保存資料，請立即匯出備份；關閉頁面後可能遺失變更。"); return false; }
   }
   let favorites = loadJson(FAV_KEY, {});        // key -> record
   let savedSearches = loadJson(SEARCH_KEY, []); // [{name, state}]
+  let work = loadJson(WORK_KEY, {});
+  if (!favorites || typeof favorites !== "object" || Array.isArray(favorites)) favorites = {};
+  if (!Array.isArray(savedSearches)) savedSearches = [];
+  if (!work || typeof work !== "object" || Array.isArray(work)) work = {};
 
   function recordKey(r) {
-    return [r.kind, r.periodStart, r.agency, r.caseNo, r.title].join("|");
+    return [r.kind, r.agency, r.caseNo].join("|");
   }
+  favorites = Object.fromEntries(Object.values(favorites).filter(r => r && r.caseNo && r.agency).map(r => [recordKey(r), r]));
 
   // ---------- 資料載入 ----------
   async function fetchJson(path) {
-    const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
+    const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${path}`);
     return res.json();
   }
@@ -92,9 +102,8 @@
       const records = (part.rows || []).map((row) => fromRow(part.columns, row));
       monthCache.set(month, records);
       return records;
-    } catch {
-      monthCache.set(month, []);
-      return [];
+    } catch (error) {
+      throw new Error(`歷史月份 ${month} 載入失敗，請重試。${error.message}`);
     }
   }
 
@@ -216,6 +225,7 @@
       start: els.start.value,
       end: els.end.value,
       sort: els.sort.value,
+      budget: els.budget.value,
       openOnly: els.open.checked,
     };
   }
@@ -230,6 +240,7 @@
     els.start.value = s.start || "";
     els.end.value = s.end || "";
     els.sort.value = s.sort || "period-desc";
+    els.budget.value = s.budget || "";
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
     updateQuickCategoryState();
@@ -258,7 +269,8 @@
       const missing = months.filter((m) => !monthCache.has(m));
       if (missing.length) {
         els.count.textContent = "載入資料中…";
-        await Promise.all(missing.map(loadMonth));
+        try { await Promise.all(missing.map(loadMonth)); }
+        catch (error) { if (token === loadToken) { els.results.textContent = ""; els.count.textContent = ""; showEmpty(error.message); } return; }
         if (token !== loadToken) return; // 已有更新的查詢
       }
       source = [];
@@ -271,19 +283,18 @@
     const agencyQ = s.agency.toLowerCase();
     const minDate = s.range === "custom" ? (s.start || null) : null;
     const maxDate = s.range === "custom" ? (s.end || null) : null;
+    if (minDate && maxDate && minDate > maxDate) { els.results.textContent = ""; els.count.textContent = ""; showEmpty("開始日期不能晚於結束日期。"); return; }
 
     filtered = source.filter((r) => {
       if (s.attr && r.attr !== s.attr) return false;
+      if (s.budget && (!budgetNumber(r.budget) || budgetNumber(r.budget) > Number(s.budget))) return false;
       if (s.method && r.method !== s.method) return false;
       if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
       if (minDate && r.periodEnd < minDate) return false;
       if (maxDate && r.periodStart > maxDate) return false;
       if (s.openOnly && currentTab !== "fav") { // 收藏分頁永遠顯示全部收藏
-        // 每日 API 記錄不含截止日:公告 45 天內視為可能仍開放
-        const maybeOpen = !r.deadline && r.sourceFile.startsWith("api:") &&
-          (Date.parse(today) - Date.parse(r.periodStart)) / 86400000 <= 45;
-        if (!(r.deadline && r.deadline >= today) && !maybeOpen) return false;
+        if (!(r.deadline && r.deadline >= today)) return false;
       }
       if (include.length || exclude.length) {
         const hay = `${r.title} ${r.caseNo} ${r.agency}`.toLowerCase();
@@ -371,6 +382,8 @@
       li.className = "card";
       const regionBadge = r.region && r.region !== "地區未明"
         ? `<span class="badge region">${escapeHtml(r.region)}（推定）</span>` : "";
+      const item = work[key];
+      const tracking = item ? `<p class="tracking-note">${escapeHtml(item.stage)} · 負責人：${escapeHtml(item.owner || "待確認")} · ${item.tasks?.length || 0}/${taskLabels.length} 項完成${item.followUp ? ` · <span class="${item.followUp < today ? "overdue" : ""}">追蹤 ${escapeHtml(item.followUp)}${item.followUp < today ? "（逾期）" : ""}</span>` : " · 追蹤日期待確認"}</p>` : "";
       li.innerHTML = `
         <div class="card-main">
           <div class="card-kicker">
@@ -388,11 +401,13 @@
             <span class="badge">${periodLabel(r)}</span>
           </div>
           <div class="card-links">
+            <button class="detail-trigger" type="button" data-work="${escapeHtml(key)}">投標工作清單${work[key] ? ` · ${escapeHtml(work[key].stage)}` : ""}</button>
             ${r.officialUrl
               ? `<a class="primary-link" href="${officialSearchUrl(r)}" target="_blank" rel="noopener">查看政府原始公告 ↗</a>`
               : `<button class="detail-trigger" type="button" data-case="${escapeHtml(r.caseNo)}" data-title="${escapeHtml(r.title)}" data-agency="${escapeHtml(r.agency)}">查看完整詳情</button><a href="${officialSearchUrl(r)}" target="_blank" rel="noopener">官方查詢 ↗</a>`}
             ${r.sourceFile?.endsWith(".xml") || isDailyRecord(r) ? `<a href="${sourceFileUrl(r)}" target="_blank" rel="noopener">檢視資料來源</a>` : ""}
           </div>
+          ${tracking}
         </div>
         <aside class="card-decision" aria-label="案件時程與預算">
           <div><span class="decision-label">截止投標</span><strong class="deadline-date">${escapeHtml(deadline.date)}</strong><span class="deadline-days ${deadline.cls}">${escapeHtml(deadline.label)}</span></div>
@@ -464,6 +479,68 @@
     els.more.hidden = true;
   }
 
+  function openWork(key) {
+    const r = filtered.find(r => recordKey(r) === key) || favorites[key];
+    if (!r) return;
+    const item = work[key] || { stage: stages[0], owner: "", followUp: "", notes: "", tasks: [] };
+    els.detailContent.className = "detail-panel";
+    els.detailContent.innerHTML = `<header><div><span>案件工作台</span><h2>${escapeHtml(r.title)}</h2><p>${escapeHtml(r.agency)} · ${escapeHtml(r.caseNo)}</p></div><button class="detail-close" type="button" aria-label="關閉">×</button></header>
+      <p class="work-notice">清單為通用準備項目，尚未解析此案附件；資格、金額與送件時間須依官方投標須知核對。資料保存在此瀏覽器，請定期匯出備份。</p>
+      <form id="work-form"><div class="detail-grid">
+      <label class="field">進度<select name="stage">${stages.map(s => `<option${s === item.stage ? " selected" : ""}>${s}</option>`).join("")}</select></label>
+      <label class="field">負責人<input name="owner" value="${escapeHtml(item.owner)}" maxlength="80"></label>
+      <label class="field">下次追蹤日期<input name="followUp" type="date" value="${escapeHtml(item.followUp)}"></label>
+      <div class="detail-field"><small>官方截止日／預算</small><strong>${escapeHtml(r.deadline || "待確認")} ／ ${escapeHtml(formatBudget(r.budget))}</strong></div>
+      <label class="field detail-field wide">紀錄與待確認事項<textarea name="notes" rows="4" maxlength="10000">${escapeHtml(item.notes)}</textarea></label></div>
+      <fieldset class="work-tasks"><legend>投標與履約準備</legend>${taskLabels.map((label,i) => `<label class="check"><input type="checkbox" name="task" value="${i}"${item.tasks?.includes(i) ? " checked" : ""}>${label}</label>`).join("")}</fieldset>
+      <div class="detail-actions"><button class="btn" type="submit">保存並加入追蹤</button><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener">核對官方公告 ↗</a></div><p id="work-status" role="status"></p></form>`;
+    els.detailDialog.showModal();
+    $("work-form").addEventListener("submit", e => {
+      e.preventDefault(); const form = new FormData(e.target);
+      work[key] = { stage: form.get("stage"), owner: form.get("owner").trim(), followUp: form.get("followUp"), notes: form.get("notes").trim(), tasks: form.getAll("task").map(Number), updatedAt: new Date().toISOString() };
+      favorites[key] = r;
+      const saved = saveJson(WORK_KEY, work) && saveJson(FAV_KEY, favorites);
+      $("work-status").textContent = saved ? "已保存，可在「我的追蹤」繼續處理。" : "僅保留在目前頁面，請匯出備份。";
+      applyFilters();
+    });
+  }
+
+  function download(name, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportBackup() {
+    download(`標案工作台備份-${todayIso()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), favorites, savedSearches, work }, null, 2), "application/json");
+  }
+
+  async function importBackup(file) {
+    if (!file) return;
+    try {
+      if (file.size > 20000000) throw new Error("備份超過 20 MB");
+      const data = JSON.parse(await file.text());
+      const object = x => x && typeof x === "object" && !Array.isArray(x);
+      if (data.version !== 1 || !object(data.favorites) || !object(data.work) || !Array.isArray(data.savedSearches)) throw new Error("不是有效的工作台備份");
+      const rows = Object.values(data.favorites);
+      if (rows.some(r => !object(r) || ["kind", "agency", "caseNo", "title", "periodStart", "periodEnd"].some(k => typeof r[k] !== "string") || (r.officialUrl && !/^https:\/\/web\.pcc\.gov\.tw\//.test(r.officialUrl)))) throw new Error("案件欄位或官方網址不正確");
+      if (Object.values(data.work).some(w => !object(w) || !stages.includes(w.stage) || !Array.isArray(w.tasks) || w.tasks.some(t => !Number.isInteger(t) || t < 0 || t >= taskLabels.length) || ["owner","followUp","notes"].some(k => typeof w[k] !== "string"))) throw new Error("工作清單格式不正確");
+      if (data.savedSearches.some(s => !object(s) || typeof s.name !== "string" || !object(s.state))) throw new Error("搜尋條件格式不正確");
+      // Merge-only: retain existing records and work where a key already exists.
+      favorites = { ...Object.fromEntries(rows.map(r => [recordKey(r), r])), ...favorites };
+      work = { ...data.work, ...work };
+      for (const s of data.savedSearches) if (!savedSearches.some(x => x.name === s.name && JSON.stringify(x.state) === JSON.stringify(s.state))) savedSearches.push(s);
+      saveJson(FAV_KEY, favorites); saveJson(WORK_KEY, work); saveJson(SEARCH_KEY, savedSearches);
+      renderSavedChips(); await applyFilters(); alert("備份已合併，原有資料保留。");
+    } catch (error) { alert(`無法匯入：${error.message}`); }
+  }
+
+  function exportCsv() {
+    const cell = v => `"${String(v ?? "").replace(/^\s*[=+@-]/, "'$&").replaceAll('"','""')}"`;
+    const rows = filtered.map(r => { const w = work[recordKey(r)] || {}; return [r.title,r.agency,r.caseNo,r.deadline,r.budget,w.stage,w.owner,w.followUp,w.notes,officialSearchUrl(r)]; });
+    download(`標案清單-${todayIso()}.csv`, "\uFEFF" + [["案名","機關","案號","截止日","預算","進度","負責人","追蹤日期","紀錄","官方網址"], ...rows].map(row => row.map(cell).join(",")).join("\r\n"), "text/csv;charset=utf-8");
+  }
+
   // ---------- 常用搜尋 ----------
   function renderSavedChips() {
     els.savedChips.textContent = "";
@@ -491,11 +568,15 @@
 
   // ---------- 事件 ----------
   function bindEvents() {
+    $("btn-backup").addEventListener("click", exportBackup);
+    $("btn-engineering").addEventListener("click", () => { setFilterState({ attr: "工程類", budget: "100000000", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-export").addEventListener("click", exportCsv);
+    $("backup-file").addEventListener("change", e => { importBackup(e.target.files[0]); e.target.value = ""; });
     let timer;
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
-    for (const el of [els.method, els.region, els.sort, els.open, els.start, els.end]) {
+    for (const el of [els.method, els.region, els.sort, els.budget, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
     els.attr.addEventListener("change", () => { updateQuickCategoryState(); applyFilters(); });
@@ -530,6 +611,8 @@
     els.tabFav.addEventListener("click", () => switchTab("fav"));
 
     els.results.addEventListener("click", (e) => {
+      const workBtn = e.target.closest("button[data-work]");
+      if (workBtn) { openWork(workBtn.dataset.work); return; }
       const detailBtn = e.target.closest("button.detail-trigger");
       if (detailBtn) {
         openDetail({ caseNo: detailBtn.dataset.case, title: detailBtn.dataset.title, agency: detailBtn.dataset.agency });
@@ -615,15 +698,7 @@
   async function init() {
     bindEvents();
     renderSavedChips();
-    try {
-      meta = await fetchJson("data/index.json");
-      if (!meta.months || meta.months.length === 0) throw new Error("index 沒有月份資料");
-    } catch (err) {
-      showEmpty("資料尚未同步或載入失敗。請先執行一次同步(GitHub Actions「每日同步標案資料」),或稍後再試。");
-      els.count.textContent = "";
-      console.error(err);
-      return;
-    }
+    const history = fetchJson("data/index.json").catch(() => ({ months: [], filters: {} }));
     // 可投標案源載入失敗時退回歷史檢視,不讓整站掛掉
     try {
       [openMeta, validation] = await Promise.all([
@@ -631,16 +706,29 @@
         fetchJson("data/open-tenders-validation.json"),
       ]);
       openTenders = openMeta.records || [];
+      if (!validation.passed || openMeta.count !== openTenders.length || validation.recordCount !== openTenders.length || !openTenders.length) throw new Error("可投標資料與驗證報告不一致");
     } catch (err) {
       openMeta = null;
       validation = null;
       openTenders = [];
       console.error("可投標案源載入失敗,退回歷史檢視", err);
     }
+    meta = await history;
+    for (const r of openTenders) if (favorites[recordKey(r)]) favorites[recordKey(r)] = r;
+    if (!openTenders.length && !(meta.months?.length)) {
+      renderStats(); showEmpty("案源暫時無法載入，請重新整理重試；仍可開啟我的追蹤與匯出備份。");
+      els.count.textContent = ""; els.headerStatus.textContent = "案源載入失敗"; return;
+    }
+    if (!openTenders.length) { els.open.checked = false; }
     renderStats();
     populateFilterOptions();
     renderSyncStatus();
     const hasOpen = openTenders.length > 0;
+    if (!hasOpen) {
+      els.statOpen.textContent = els.statToday.textContent = els.statUrgent.textContent = els.statEngineering.textContent = "—";
+      els.banner.hidden = false; els.banner.className = "sync-banner warn";
+      els.banner.textContent = "目前可投標資料無法載入或未通過驗證，以下改顯示歷史資料；不代表目前沒有標案。請重新整理或核對官方網站。";
+    }
     setFilterState(hasOpen ? { openOnly: true, sort: "deadline-asc" } : { openOnly: false });
     await applyFilters();
   }

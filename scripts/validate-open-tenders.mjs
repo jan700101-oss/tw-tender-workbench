@@ -6,11 +6,20 @@ const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const DATA=resolve(ROOT,"docs/data/open-tenders.json"), REPORT=resolve(ROOT,"docs/data/open-tenders-validation.json");
 const payload=JSON.parse(readFileSync(DATA,"utf8")), records=payload.records||[];
 const today=new Date(Date.now()+28800000).toISOString().slice(0,10), errors=[], keys=new Set();
+const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
+const generated = Date.parse(payload.generatedAt);
+if (!/^20\d{2}-/.test(payload.generatedAt || "") || !Number.isFinite(generated) || generated > Date.now()+300000 || generated < Date.now()-86400000) errors.push("invalid or stale generatedAt");
+if (!records.length) errors.push("no open tenders");
+const latest = records.reduce((date,r) => r.periodStart > date ? r.periodStart : date, "");
+if (!validDate(latest) || Math.abs(Date.parse(latest)-Date.parse(today)) > 7*86400000) errors.push("latest announcement outside seven-day window");
+if (/\uFFFD|Ã.|Â[\u0080-\u00ff]|銝|嚙踝蕭/.test(JSON.stringify(payload))) errors.push("replacement character or suspected mojibake");
 for(const [i,r] of records.entries()){
   for(const field of ["periodStart","deadline","agency","caseNo","title","method","attr","officialUrl","sourcePage"])
     if(!String(r[field]||"").trim())errors.push(`row ${i+1}: missing ${field}`);
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(r.deadline)||r.deadline<today)errors.push(`row ${i+1}: invalid/expired deadline ${r.deadline}`);
-  if(!r.officialUrl.startsWith("https://web.pcc.gov.tw/prkms/urlSelector/common/tpam?pk="))errors.push(`row ${i+1}: invalid official URL`);
+  if(!validDate(r.deadline)||r.deadline<today)errors.push(`row ${i+1}: invalid/expired deadline ${r.deadline}`);
+  if(!validDate(r.periodStart))errors.push(`row ${i+1}: invalid announcement date`);
+  try { const url = new URL(r.officialUrl); if(url.origin !== "https://web.pcc.gov.tw" || url.pathname !== "/prkms/urlSelector/common/tpam" || !url.searchParams.get("pk")) throw new Error(); }
+  catch { errors.push(`row ${i+1}: invalid official URL`); }
   const key=`${r.agency}|${r.caseNo}`;if(keys.has(key))errors.push(`row ${i+1}: duplicate ${key}`);keys.add(key);
 }
 if(records.length!==payload.count)errors.push(`count mismatch ${records.length}/${payload.count}`);
@@ -29,7 +38,7 @@ let cursor=0;const pages=[...byPage.entries()],checked=[];
 async function worker(){while(cursor<pages.length){const[page,items]=pages[cursor++];try{
  const url=new URL(payload.source);url.searchParams.set(payload.pageKey||"d-49738-p",String(page));const html=await fetchText(url);
  for(const r of items){const pk=new URL(r.officialUrl).searchParams.get("pk");const checks={caseNo:html.includes(r.caseNo),title:html.includes(r.title),deadline:html.includes(roc(r.deadline)),link:html.includes(pk)};
- checked.push({caseNo:r.caseNo,sourcePage:page,...checks});if(Object.values(checks).some(v=>!v))errors.push(`official row mismatch ${r.caseNo}: ${JSON.stringify(checks)}`);}
+ checked.push({caseNumber:r.caseNo,sourcePage:page,...checks});if(Object.values(checks).some(v=>!v))errors.push(`official row mismatch ${r.caseNo}: ${JSON.stringify(checks)}`);}
 }catch(e){errors.push(`official page unavailable ${page}: ${e.message}`);}}}
 await Promise.all(Array.from({length:4},worker));
 const passedRows=checked.filter(x=>x.caseNo&&x.title&&x.deadline&&x.link).length;

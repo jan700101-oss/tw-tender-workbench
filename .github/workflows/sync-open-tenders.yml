@@ -9,20 +9,27 @@ permissions:
   contents: write
 concurrency:
   group: sync-open-tenders
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - run: node scripts/sync-open-tenders.mjs
-      - run: node scripts/validate-open-tenders.mjs
+          node-version: 24
+      - name: 更新、官方驗證與失敗還原
+        shell: powershell
+        run: .\scripts\update-pcc-data.ps1
+      - run: node --check docs/app.js
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data/open-tenders.json docs/data/open-tenders-validation.json
-          git diff --cached --quiet || (git commit -m "更新目前可投標案件" && git push)
+          git add docs/data/open-tenders.json docs/data/open-tenders-validation.json docs/index.html
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "更新目前可投標案件"
+            git push origin main
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
