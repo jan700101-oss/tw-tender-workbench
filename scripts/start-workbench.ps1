@@ -19,5 +19,13 @@ if (-not $ready) {
     }
 }
 if (-not $ready) { throw 'Startup failed. See outputs/integrated-workbench-error.log.' }
+$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
+if ($ollamaCommand) {
+    $ollamaReady = $false
+    try { $null = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2; $ollamaReady = $true } catch {}
+    if (-not $ollamaReady) {
+        Start-Process -FilePath $ollamaCommand.Source -ArgumentList @('serve') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $projectRoot 'outputs\ollama-integration.log') -RedirectStandardError (Join-Path $projectRoot 'outputs\ollama-integration-error.log') | Out-Null
+    }
+}
 if (-not $NoBrowser) { Start-Process "$env:WINDIR\System32\rundll32.exe" -ArgumentList @('url.dll,FileProtocolHandler', $url) -WindowStyle Hidden }
 Write-Output "Integrated workbench is ready: $url"

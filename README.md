@@ -12,7 +12,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-workbenc
 
 開啟 http://127.0.0.1:8796/tenders/ 。點任一標案「投標工作清單」，可保存進度、負責人、追蹤日期與準備項目，並帶入文件助理。文件助理沿用既有 `ai-tender-document-assistant` 專案，原案件仍在該專案 `cases/`，沒有搬移或刪除。啟動腳本依相鄰專案位置尋找文件助理，也可指定 `-AssistantRoot`。
 
-文件助理可上傳 PDF、DOCX、XLSX、TXT，抽取文字並生成六類 Markdown 草稿，支援 Word 匯出。預設是免費本機規則整理（非 AI），會摘錄來源並標示待確認；OpenAI/Ollama 是選用模式，外部 AI 尚未完成真實連線驗收。
+文件助理可上傳 PDF、DOCX、XLSX、TXT，抽取文字並生成六類 Markdown 草稿，支援 Word 匯出。預設是免費本機規則整理（非 AI），會摘錄來源並標示待確認；也可選擇免費本機 AI（Ollama）。已使用既有 `gemma3:4b` 模型完成真實標案分析呼叫，附來源索引供核對；OpenAI 是選用模式，尚未完成真實連線驗收。AI 草稿仍可能漏項或矛盾，需回查原始文件。
 
 公開網站的追蹤與工作紀錄保存在瀏覽器，請使用「備份追蹤與工作紀錄」及「合併匯入備份」跨裝置保存；文件助理的案件保存在本機硬碟。兩者共用案件來源連結，但尚非多人雲端資料庫。清除瀏覽器資料前必須先備份。
 
