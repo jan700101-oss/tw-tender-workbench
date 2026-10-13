@@ -33,6 +33,7 @@
     end: $("f-end"),
     sort: $("f-sort"),
     budget: $("f-budget"),
+    deadline: $("f-deadline"),
     open: $("f-open"),
     saveSearch: $("btn-save-search"),
     clear: $("btn-clear"),
@@ -155,6 +156,27 @@
     els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
     els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= urgentEnd).length);
     els.statEngineering.textContent = numberFormat.format(current.filter((r) => r.attr === "工程類").length);
+    renderDeadlineGroups(current, today);
+  }
+
+  function renderDeadlineGroups(current, today) {
+    const groups = [
+      { window: "2-months", title: "兩個月內截止", min: today, max: twoMonthsAfter(today), note: "近期可投標總覽" },
+      { window: "14-21", title: "剩 2～3 週", min: addDays(today, 14), max: addDays(today, 21), note: "提前評估資格、文件與報價" },
+      { window: "0-4", title: "剩不到 5 天", min: today, max: addDays(today, 4), note: "急件：請核對官方截止時刻" },
+    ];
+    $("deadline-groups").innerHTML = groups.map(g => {
+      const rows = current.filter(r => r.deadline >= g.min && r.deadline <= g.max)
+        .sort((a, b) => a.deadline.localeCompare(b.deadline));
+      return `<article class="deadline-group"><button type="button" class="deadline-group-select" data-window="${g.window}"><span>${g.title}</span><strong>${numberFormat.format(rows.length)} 件</strong><small>${g.note} · 查看全部 →</small></button><ul>${rows.slice(0, 3).map(r => `<li><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a><small>${escapeHtml(r.agency)}</small><span class="deadline-days ${deadlineInfo(r, today).cls}">${escapeHtml(deadlineInfo(r, today).label)}</span></li>`).join("") || "<li>目前沒有符合的案件</li>"}</ul></article>`;
+    }).join("");
+    $("deadline-groups").querySelectorAll("[data-window]").forEach(button => {
+      button.addEventListener("click", () => {
+        setFilterState({ deadlineWindow: button.dataset.window, openOnly: true, sort: "deadline-asc" });
+        switchTab("all");
+        $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   }
 
   function renderSyncStatus() {
@@ -226,6 +248,7 @@
       end: els.end.value,
       sort: els.sort.value,
       budget: els.budget.value,
+      deadlineWindow: els.deadline.value,
       openOnly: els.open.checked,
     };
   }
@@ -241,6 +264,7 @@
     els.end.value = s.end || "";
     els.sort.value = s.sort || "period-desc";
     els.budget.value = s.budget || "";
+    els.deadline.value = s.deadlineWindow ?? "2-months";
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
     updateQuickCategoryState();
@@ -286,6 +310,14 @@
     if (minDate && maxDate && minDate > maxDate) { els.results.textContent = ""; els.count.textContent = ""; showEmpty("開始日期不能晚於結束日期。"); return; }
 
     filtered = source.filter((r) => {
+      if (s.deadlineWindow) {
+        if (!r.deadline || r.deadline < today) return false;
+        const minDays = s.deadlineWindow.startsWith("14-") ? 14 : 0;
+        const maxDays = ["14-plus", "2-months"].includes(s.deadlineWindow) ? null : Number(s.deadlineWindow.split("-")[1]);
+        if (s.deadlineWindow === "2-months" && r.deadline > twoMonthsAfter(today)) return false;
+        if (r.deadline < addDays(today, minDays)) return false;
+        if (maxDays !== null && r.deadline > addDays(today, maxDays)) return false;
+      }
       if (s.attr && r.attr !== s.attr) return false;
       if (s.budget && (!budgetNumber(r.budget) || budgetNumber(r.budget) > Number(s.budget))) return false;
       if (s.method && r.method !== s.method) return false;
@@ -359,11 +391,22 @@
     return `公告期間 ${y}/${m}/${Number(d1)}–${Number(d2)}`;
   }
 
+  function twoMonthsAfter(iso) {
+    const date = new Date(`${iso}T00:00:00Z`);
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + 2);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+    return date.toISOString().slice(0, 10);
+  }
+
   function deadlineInfo(r, today) {
     if (!r.deadline) return { date: "詳情確認", label: isDailyRecord(r) ? "截止日見詳情" : "截止日未提供", cls: "" };
     const days = Math.round((new Date(`${r.deadline}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
     if (days < 0) return { date: r.deadline, label: `已截止 ${Math.abs(days)} 天`, cls: "closed" };
     if (days === 0) return { date: r.deadline, label: "今天截止", cls: "urgent" };
+    if (days >= 14 && days <= 21) return { date: r.deadline, label: `剩 ${days} 天 · 2～3 週準備期`, cls: "planning" };
     return { date: r.deadline, label: `剩 ${days} 天`, cls: days <= 3 ? "urgent" : "" };
   }
 
@@ -580,7 +623,7 @@
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
-    for (const el of [els.method, els.region, els.sort, els.budget, els.open, els.start, els.end]) {
+    for (const el of [els.method, els.region, els.sort, els.budget, els.deadline, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
     els.attr.addEventListener("change", () => { updateQuickCategoryState(); applyFilters(); });

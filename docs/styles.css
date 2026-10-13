@@ -131,6 +131,18 @@ kbd { border: 1px solid #d9ddd9; border-bottom-width: 2px; border-radius: 6px; p
 .deadline-date { display: block; margin-top: 4px; color: var(--forest); font: 800 1.05rem ui-monospace, SFMono-Regular, Consolas, monospace; }
 .deadline-days { display: inline-block; margin-top: 7px; border-radius: 6px; padding: 3px 7px; background: var(--sage); color: var(--forest); font-size: .75rem; font-weight: 800; }
 .deadline-days.urgent { background: var(--orange-soft); color: var(--danger); }
+.deadline-days.planning { background: #e2edff; color: #17468b; border: 1px solid #90b4ec; }
+.deadline-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.deadline-group { border: 1px solid #ccd9d0; border-radius: 12px; background: white; overflow: hidden; }
+.deadline-group-select { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 20px; text-align: left; border: 0; background: var(--sage); color: var(--forest); cursor: pointer; }
+.deadline-group-select span { font-size: 1.15rem; font-weight: 800; }
+.deadline-group-select strong { font-size: 1.5rem; }
+.deadline-group-select:focus-visible { outline: 3px solid #17468b; outline-offset: -3px; }
+.deadline-group ul { list-style: none; margin: 0; padding: 0 16px; }
+.deadline-group li { padding: 14px 0; border-top: 1px solid #e4eae6; overflow-wrap: anywhere; }
+.deadline-group li a { display: block; color: var(--forest); font-weight: 700; }
+.deadline-group li small { display: block; margin-top: 6px; color: var(--muted); }
+@media (max-width: 760px) { .deadline-groups { grid-template-columns: 1fr; } }
 .deadline-days.closed { background: #eee; color: var(--muted); }
 .budget { margin-top: 16px; }
 .budget strong { display: block; margin-top: 4px; color: var(--ink); font-size: .9rem; }
