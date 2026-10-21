@@ -13,6 +13,7 @@
   const WORK_KEY = "twb.work.v1";
   const stages = ["評估中", "準備投標", "已送件", "履約中", "驗收保固", "不投標"];
   const taskLabels = ["核對官方公告與更正", "下載投標須知、契約與圖說", "確認資格、證照與實績", "確認現勘與提問期限", "確認押標金與資金", "完成估價與標價清單", "確認用印、封裝、送件時間", "開工、材料送審與施工紀錄", "竣工、驗收與保固文件"];
+  const specialistTerms = /工程|營造|土木|建築|室內裝修|裝修工程|施工|施作|補修|修繕|維修|維護|汰換|加固|改善工作|油槽|邊坡|孔蓋|機電|水電|電器承裝|消防|空調|電梯|昇降|鍋爐|瓦斯|天然氣|管線|監造|技師|建築師|測量|測繪|地質|鑽探|結構|耐震|職業安全|安裝服務|設備安裝|檢修|專業服務|調查|研究|諮詢|顧問|檢驗|檢測|稽核|查核|鑑定|認證|醫療器材|醫療設備|血壓|血氧|手術|護理|照護|社工|托育|藥品|藥劑|疫苗|試劑|抗體|放射|保全|警衛|旅行|旅遊|戶外教育|校外教學|考察|參訪|體驗營|廢棄物|清運|病媒|農藥|獸醫|拖吊|槍|彈藥|火藥|砲|爆裂物/;
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -22,8 +23,12 @@
     statToday: $("stat-today"),
     statUrgent: $("stat-urgent"),
     statEngineering: $("stat-engineering"),
+    statGeneralAll: $("stat-general-all"),
+    statGeneralGoods: $("stat-general-goods"),
+    statGeneralServices: $("stat-general-services"),
     q: $("q"),
     attr: $("f-attr"),
+    qualification: $("f-qualification"),
     method: $("f-method"),
     region: $("f-region"),
     agency: $("f-agency"),
@@ -148,6 +153,18 @@
     return amount ? `NT$ ${numberFormat.format(amount)}` : "未提供";
   }
 
+  function qualificationGroup(r) {
+    const text = `${r.title || ""} ${r.method || ""}`;
+    if (r.attr === "工程類" || specialistTerms.test(text)) return "specialist";
+    if (r.attr === "財物類") return "general-goods";
+    if (r.attr === "勞務類") return "general-services";
+    return "specialist";
+  }
+
+  function isGeneralBusinessCandidate(r) {
+    return qualificationGroup(r).startsWith("general-");
+  }
+
   function renderStats() {
     const today = todayIso();
     const urgentEnd = addDays(today, 3);
@@ -156,6 +173,9 @@
     els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
     els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= urgentEnd).length);
     els.statEngineering.textContent = numberFormat.format(current.filter((r) => r.attr === "工程類").length);
+    els.statGeneralGoods.textContent = numberFormat.format(current.filter((r) => qualificationGroup(r) === "general-goods").length);
+    els.statGeneralServices.textContent = numberFormat.format(current.filter((r) => qualificationGroup(r) === "general-services").length);
+    els.statGeneralAll.textContent = numberFormat.format(current.filter(isGeneralBusinessCandidate).length);
     renderDeadlineGroups(current, today);
   }
 
@@ -240,6 +260,7 @@
     return {
       q: els.q.value.trim(),
       attr: els.attr.value,
+      qualification: els.qualification.value,
       method: els.method.value,
       region: els.region.value,
       agency: els.agency.value.trim(),
@@ -256,6 +277,7 @@
   function setFilterState(s) {
     els.q.value = s.q || "";
     els.attr.value = s.attr || "";
+    els.qualification.value = s.qualification || "";
     els.method.value = s.method || "";
     els.region.value = s.region || "";
     els.agency.value = s.agency || "";
@@ -272,7 +294,7 @@
 
   function updateQuickCategoryState() {
     document.querySelectorAll(".quick-category").forEach((button) => {
-      const active = button.dataset.attr === els.attr.value;
+      const active = !els.qualification.value && button.dataset.attr === els.attr.value;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", String(active));
     });
@@ -319,6 +341,9 @@
         if (maxDays !== null && r.deadline > addDays(today, maxDays)) return false;
       }
       if (s.attr && r.attr !== s.attr) return false;
+      const group = qualificationGroup(r);
+      if (s.qualification === "general" && !isGeneralBusinessCandidate(r)) return false;
+      if (s.qualification && s.qualification !== "general" && group !== s.qualification) return false;
       if (s.budget && (!budgetNumber(r.budget) || budgetNumber(r.budget) > Number(s.budget))) return false;
       if (s.method && r.method !== s.method) return false;
       if (s.region && r.region !== s.region) return false;
@@ -427,6 +452,12 @@
         ? `<span class="badge region">${escapeHtml(r.region)}（推定）</span>` : "";
       const item = work[key];
       const tracking = item ? `<p class="tracking-note">${escapeHtml(item.stage)} · 負責人：${escapeHtml(item.owner || "待確認")} · ${item.tasks?.length || 0}/${taskLabels.length} 項完成${item.followUp ? ` · <span class="${item.followUp < today ? "overdue" : ""}">追蹤 ${escapeHtml(item.followUp)}${item.followUp < today ? "（逾期）" : ""}</span>` : " · 追蹤日期待確認"}</p>` : "";
+      const qualification = qualificationGroup(r);
+      const qualificationBadge = qualification === "general-goods"
+        ? '<span class="badge qualification">一般商業初篩 · 商品</span>'
+        : qualification === "general-services"
+          ? '<span class="badge qualification caution">一般商業初篩 · 勞務須複核</span>'
+          : "";
       li.innerHTML = `
         <div class="card-main">
           <div class="card-kicker">
@@ -439,6 +470,7 @@
           </div>
           <div class="card-meta">
             <span class="badge attr">${escapeHtml(r.attr || "未分類")}</span>
+            ${qualificationBadge}
             <span class="badge">${escapeHtml(r.method || "招標方式未提供")}</span>
             ${regionBadge}
             <span class="badge">${periodLabel(r)}</span>
@@ -617,6 +649,13 @@
   function bindEvents() {
     $("btn-backup").addEventListener("click", exportBackup);
     $("btn-engineering").addEventListener("click", () => { setFilterState({ attr: "工程類", budget: "100000000", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    document.querySelectorAll("[data-qualification]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setFilterState({ qualification: button.dataset.qualification, sort: "deadline-asc", openOnly: true });
+        switchTab("all");
+        $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
     $("btn-export").addEventListener("click", exportCsv);
     $("backup-file").addEventListener("change", e => { importBackup(e.target.files[0]); e.target.value = ""; });
     let timer;
@@ -626,10 +665,20 @@
     for (const el of [els.method, els.region, els.sort, els.budget, els.deadline, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
-    els.attr.addEventListener("change", () => { updateQuickCategoryState(); applyFilters(); });
+    els.qualification.addEventListener("change", () => {
+      if (els.qualification.value) els.attr.value = "";
+      updateQuickCategoryState();
+      applyFilters();
+    });
+    els.attr.addEventListener("change", () => {
+      if (els.attr.value) els.qualification.value = "";
+      updateQuickCategoryState();
+      applyFilters();
+    });
     document.querySelectorAll(".quick-category").forEach((button) => {
       button.addEventListener("click", () => {
         els.attr.value = button.dataset.attr;
+        els.qualification.value = "";
         updateQuickCategoryState();
         applyFilters();
       });

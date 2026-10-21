@@ -16,7 +16,7 @@
 <meta name="twitter:description" content="搜尋、篩選、比較與收藏臺灣政府採購標案。">
 <meta name="twitter:image" content="https://jan700101-oss.github.io/tw-tender-workbench/og.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2312382f'/%3E%3Cpath d='M28 25h44v55H28z' fill='%23f4f0e7'/%3E%3Cpath d='M37 41h26M37 53h26M37 65h17' stroke='%23f26a3d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=202610210808-deadline-groups">
+<link rel="stylesheet" href="styles.css?v=20261021-general-business-1">
 </head>
 <body>
 <a class="skip-link" href="#results-heading">跳到搜尋結果</a>
@@ -71,6 +71,26 @@
     <div id="sync-banner" class="sync-banner" role="status" hidden></div>
     <section id="deadline-groups" class="deadline-groups" aria-label="依截止時間選標案"></section>
 
+    <section class="qualification-zone" aria-labelledby="qualification-heading">
+      <div class="qualification-intro">
+        <p class="section-kicker">BUSINESS-READY</p>
+        <h2 id="qualification-heading">一般商業資格初篩專區</h2>
+        <p>優先整理可能以公司／商業登記、納稅證明及與標的相關營業項目即可參與的案件。這是依採購類別與案名做的保守初篩，不代表免證照；投標前仍須逐案核對政府原始公告的「廠商資格」。</p>
+      </div>
+      <div class="qualification-options">
+        <button id="btn-general-all" class="qualification-card" type="button" data-qualification="general">
+          <span>全部一般資格候選</span><strong id="stat-general-all">—</strong><small>財物＋非專業勞務</small>
+        </button>
+        <button id="btn-general-goods" class="qualification-card" type="button" data-qualification="general-goods">
+          <span>商品／設備採購</span><strong id="stat-general-goods">—</strong><small>優先看財物類案件</small>
+        </button>
+        <button id="btn-general-services" class="qualification-card" type="button" data-qualification="general-services">
+          <span>一般勞務採購</span><strong id="stat-general-services">—</strong><small>仍須特別核對資格條款</small>
+        </button>
+      </div>
+      <p class="qualification-exclusions"><strong>預設排除：</strong>工程、營造、土木、室內裝修、建築師／技師、監造測量、醫療藥品、保全、旅行、廢棄物清運等常見需專業許可或證照案件。</p>
+    </section>
+
     <section class="controls" aria-labelledby="filter-heading">
       <div class="section-heading">
         <div><p class="section-kicker">FILTERS</p><h2 id="filter-heading">縮小搜尋範圍</h2></div>
@@ -80,6 +100,16 @@
         <div class="field">
           <label for="f-attr">採購類別</label>
           <select id="f-attr"><option value="">全部類別</option></select>
+        </div>
+        <div class="field">
+          <label for="f-qualification">資格初篩</label>
+          <select id="f-qualification">
+            <option value="">不限資格類型</option>
+            <option value="general">一般商業資格候選</option>
+            <option value="general-goods">商品／設備採購候選</option>
+            <option value="general-services">一般勞務候選</option>
+            <option value="specialist">工程／專業資格案件</option>
+          </select>
         </div>
         <div class="field">
           <label for="f-region">履約地區（推定）</label>
@@ -178,6 +208,6 @@
 </footer>
 
 <noscript><div class="no-script">此網站需要 JavaScript 才能搜尋標案，請啟用後重新整理。</div></noscript>
-<script src="app.js?v=202610210808-deadline-groups"></script>
+<script src="app.js?v=20261021-general-business-1"></script>
 </body>
 </html>
