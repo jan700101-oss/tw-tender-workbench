@@ -27,7 +27,11 @@
     statGeneralAll: $("stat-general-all"),
     statGeneralGoods: $("stat-general-goods"),
     statGeneralServices: $("stat-general-services"),
+    deadlineToday: $("stat-deadline-today"),
+    deadlineTomorrow: $("stat-deadline-tomorrow"),
+    urgentSummary: $("urgent-summary-count"),
     q: $("q"),
+    profile: $("f-profile"),
     attr: $("f-attr"),
     qualification: $("f-qualification"),
     method: $("f-method"),
@@ -40,6 +44,7 @@
     sort: $("f-sort"),
     budget: $("f-budget"),
     deadline: $("f-deadline"),
+    retender: $("f-retender"),
     open: $("f-open"),
     saveSearch: $("btn-save-search"),
     clear: $("btn-clear"),
@@ -47,6 +52,7 @@
     tabAll: $("tab-all"),
     tabFav: $("tab-fav"),
     favCount: $("fav-count"),
+    resultsHeading: $("results-heading"),
     count: $("result-count"),
     results: $("results"),
     detailDialog: $("detail-dialog"),
@@ -168,13 +174,52 @@
     return qualificationGroup(r).startsWith("general-");
   }
 
+  const myRegions = new Set(["彰化縣", "臺中市", "南投縣", "雲林縣"]);
+  const interiorTerms = /室內|裝修|整修|修繕|改造|空間改善|廁所|辦公空間|教學環境|活動中心|防水|地坪|牆面|天花板|門窗|隔間|油漆|塗裝|校舍|教室/;
+  const excludedCivilTerms = /道路|路面|野溪|護岸|排水|下水道|橋梁|邊坡|擋土|水利|河川|農路|災害復建/;
+
+  function isMyOpportunity(r) {
+    const title = r.title || "";
+    if (!myRegions.has(r.region)) return false;
+    if (!interiorTerms.test(title)) return false;
+    if (excludedCivilTerms.test(title) && !/室內|裝修|整修|廁所|辦公|教室|校舍|圖書館/.test(title)) return false;
+    return r.attr === "工程類" || r.attr === "勞務類" || /設計|監造/.test(title);
+  }
+
+  function chineseNumber(value) {
+    if (/^\d+$/.test(value)) return Number(value);
+    const digits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (digits[value]) return digits[value];
+    if (value.startsWith("十")) return 10 + (digits[value.slice(1)] || 0);
+    if (value.endsWith("十")) return (digits[value[0]] || 0) * 10;
+    if (value.includes("十")) return (digits[value[0]] || 0) * 10 + (digits[value.slice(2)] || 0);
+    return 0;
+  }
+
+  function retenderInfo(r) {
+    const cached = bidStatuses[recordKey(r)]?.status || "";
+    const official = cached.match(/第\s*0*([0-9]+)\s*次/) || cached.match(/第\s*([一二三四五六七八九十]+)\s*次/);
+    if (official) return { round: chineseNumber(official[1]), source: "official", label: cached };
+    const title = r.title || "";
+    const explicit = title.match(/第\s*0*([0-9]+)\s*次\s*(?:公開)?招標/) || title.match(/第\s*([一二三四五六七八九十]+)\s*次\s*(?:公開)?招標/);
+    if (explicit) return { round: chineseNumber(explicit[1]), source: "title", label: `案名顯示第 ${chineseNumber(explicit[1])} 次招標` };
+    const suffix = title.match(/[（(](?:第)?\s*([一二三四五六七八九十0-9]+)\s*次[）)]\s*$/);
+    if (suffix) return { round: chineseNumber(suffix[1]), source: "title", label: `案名顯示第 ${chineseNumber(suffix[1])} 次` };
+    if (/(?:重新|重行)招標/.test(title)) return { round: 2, source: "title", label: "案名顯示重新招標" };
+    return { round: 0, source: "none", label: "" };
+  }
+
   function renderStats() {
     const today = todayIso();
-    const urgentEnd = addDays(today, 3);
     const current = openTenders.filter((r) => r.deadline >= today);
+    const todayRows = current.filter((r) => r.deadline === today);
+    const tomorrowRows = current.filter((r) => r.deadline === addDays(today, 1));
     els.statOpen.textContent = numberFormat.format(current.length);
     els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
-    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= urgentEnd).length);
+    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline >= addDays(today, 14)).length);
+    els.deadlineToday.textContent = numberFormat.format(todayRows.length);
+    els.deadlineTomorrow.textContent = numberFormat.format(tomorrowRows.length);
+    els.urgentSummary.textContent = `${numberFormat.format(todayRows.length + tomorrowRows.length)} 件`;
     els.statEngineering.textContent = numberFormat.format(current.filter((r) => r.attr === "工程類").length);
     els.statGeneralGoods.textContent = numberFormat.format(current.filter((r) => qualificationGroup(r) === "general-goods").length);
     els.statGeneralServices.textContent = numberFormat.format(current.filter((r) => qualificationGroup(r) === "general-services").length);
@@ -183,19 +228,24 @@
   }
 
   function renderDeadlineGroups(current, today) {
+    const displayed = new Set();
     const groups = [
-      { window: "2-months", title: "兩個月內截止", min: today, max: twoMonthsAfter(today), note: "近期可投標總覽" },
-      { window: "14-21", title: "剩 2～3 週", min: addDays(today, 14), max: addDays(today, 21), note: "提前評估資格、文件與報價" },
-      { window: "0-4", title: "剩不到 5 天", min: today, max: addDays(today, 4), note: "急件：請核對官方截止時刻" },
+      { profile: "my", window: "14-plus", title: "我的案源 · 至少 2 週", test: r => isMyOpportunity(r) && r.deadline >= addDays(today, 14), note: "彰中投雲室內工程，優先準備" },
+      { retender: "2-plus", window: "2-plus", title: "重招觀察", test: r => retenderInfo(r).round >= 2 && r.deadline >= addDays(today, 2), note: "案名或官方狀態顯示重招，原因仍須核對" },
+      { profile: "", window: "14-plus", title: "其他可準備案件", test: r => !isMyOpportunity(r) && r.deadline >= addDays(today, 14), note: "至少剩 14 天，不含我的案源" },
     ];
     $("deadline-groups").innerHTML = groups.map(g => {
-      const rows = current.filter(r => r.deadline >= g.min && r.deadline <= g.max)
-        .sort((a, b) => a.deadline.localeCompare(b.deadline));
-      return `<article class="deadline-group"><button type="button" class="deadline-group-select" data-window="${g.window}"><span>${g.title}</span><strong>${numberFormat.format(rows.length)} 件</strong><small>${g.note} · 查看全部 →</small></button><ul>${rows.slice(0, 3).map(r => `<li><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a><small>${escapeHtml(r.agency)}</small><span class="deadline-days ${deadlineInfo(r, today).cls}">${escapeHtml(deadlineInfo(r, today).label)}</span></li>`).join("") || "<li>目前沒有符合的案件</li>"}</ul></article>`;
+      const allRows = current.filter(g.test).sort((a, b) => {
+        if (g.retender) return retenderInfo(b).round - retenderInfo(a).round || a.deadline.localeCompare(b.deadline);
+        return a.deadline.localeCompare(b.deadline);
+      });
+      const rows = allRows.filter(r => !displayed.has(recordKey(r)));
+      rows.slice(0, 3).forEach(r => displayed.add(recordKey(r)));
+      return `<article class="deadline-group"><button type="button" class="deadline-group-select" data-window="${g.window}" data-profile="${g.profile ?? ""}" data-retender="${g.retender || ""}"><span>${g.title}</span><strong>${numberFormat.format(allRows.length)} 件</strong><small>${g.note} · 查看全部 →</small></button><ul>${rows.slice(0, 3).map(r => `<li><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a><small>${escapeHtml(r.agency)}</small><span class="deadline-days ${deadlineInfo(r, today).cls}">${escapeHtml(deadlineInfo(r, today).label)}</span></li>`).join("") || "<li>目前沒有符合的案件</li>"}</ul></article>`;
     }).join("");
     $("deadline-groups").querySelectorAll("[data-window]").forEach(button => {
       button.addEventListener("click", () => {
-        setFilterState({ deadlineWindow: button.dataset.window, openOnly: true, sort: "deadline-asc" });
+        setFilterState({ profile: button.dataset.profile, retender: button.dataset.retender, deadlineWindow: button.dataset.window, openOnly: true, sort: "deadline-asc" });
         switchTab("all");
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -213,10 +263,14 @@
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
         els.banner.textContent = "目前資料尚未通過官方公告驗證，請勿作為投標依據。";
-      } else if (staleHours > 36) {
+      } else if (staleHours > 48) {
+        els.banner.hidden = false;
+        els.banner.className = "sync-banner danger";
+        els.banner.textContent = "可投標案源超過 48 小時未更新，資料可能過期，請先以政府電子採購網公告為準。";
+      } else if (staleHours > 24) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
-        els.banner.textContent = "可投標案源超過 36 小時未更新，請先以政府電子採購網公告為準。";
+        els.banner.textContent = "可投標案源超過 24 小時未更新，請留意資料時間並核對政府電子採購網。";
       } else if (histFailed) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
@@ -262,6 +316,7 @@
   function getFilterState() {
     return {
       q: els.q.value.trim(),
+      profile: els.profile.value,
       attr: els.attr.value,
       qualification: els.qualification.value,
       method: els.method.value,
@@ -273,12 +328,14 @@
       sort: els.sort.value,
       budget: els.budget.value,
       deadlineWindow: els.deadline.value,
+      retender: els.retender.value,
       openOnly: els.open.checked,
     };
   }
 
   function setFilterState(s) {
     els.q.value = s.q || "";
+    els.profile.value = s.profile ?? "my";
     els.attr.value = s.attr || "";
     els.qualification.value = s.qualification || "";
     els.method.value = s.method || "";
@@ -287,9 +344,10 @@
     els.range.value = s.range || "3";
     els.start.value = s.start || "";
     els.end.value = s.end || "";
-    els.sort.value = s.sort || "period-desc";
+    els.sort.value = s.sort || "deadline-asc";
     els.budget.value = s.budget || "";
-    els.deadline.value = s.deadlineWindow ?? "2-months";
+    els.deadline.value = s.deadlineWindow ?? "14-plus";
+    els.retender.value = s.retender || "";
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
     updateQuickCategoryState();
@@ -297,7 +355,7 @@
 
   function updateQuickCategoryState() {
     document.querySelectorAll(".quick-category").forEach((button) => {
-      const active = !els.qualification.value && button.dataset.attr === els.attr.value;
+      const active = !els.profile.value && !els.qualification.value && button.dataset.attr === els.attr.value;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", String(active));
     });
@@ -307,6 +365,12 @@
     const token = ++loadToken;
     const s = getFilterState();
     const today = todayIso();
+    if (s.deadlineWindow === "0-0") els.resultsHeading.textContent = "今天截止案件（僅供核對）";
+    else if (s.deadlineWindow === "1-1") els.resultsHeading.textContent = "明天截止案件（剩 1 天）";
+    else if (s.retender) els.resultsHeading.textContent = s.retender === "3-plus" ? "第 3 次以上招標觀察" : "重招觀察案件";
+    else if (s.profile === "my") els.resultsHeading.textContent = "我的案源（至少剩 2 週）";
+    else if (s.deadlineWindow === "14-plus") els.resultsHeading.textContent = "來得及準備的標案";
+    else els.resultsHeading.textContent = "標案搜尋結果";
 
     let source;
     if (currentTab === "fav") {
@@ -337,12 +401,17 @@
     filtered = source.filter((r) => {
       if (s.deadlineWindow) {
         if (!r.deadline || r.deadline < today) return false;
-        const minDays = s.deadlineWindow.startsWith("14-") ? 14 : 0;
-        const maxDays = ["14-plus", "2-months"].includes(s.deadlineWindow) ? null : Number(s.deadlineWindow.split("-")[1]);
+        const [rawMin, rawMax] = s.deadlineWindow.split("-");
+        const minDays = Number(rawMin);
+        const maxDays = rawMax === "plus" || s.deadlineWindow === "2-months" ? null : Number(rawMax);
         if (s.deadlineWindow === "2-months" && r.deadline > twoMonthsAfter(today)) return false;
         if (r.deadline < addDays(today, minDays)) return false;
         if (maxDays !== null && r.deadline > addDays(today, maxDays)) return false;
       }
+      if (s.profile === "my" && !isMyOpportunity(r)) return false;
+      const reoffer = retenderInfo(r);
+      if (s.retender === "2-plus" && reoffer.round < 2) return false;
+      if (s.retender === "3-plus" && reoffer.round < 3) return false;
       if (s.attr && r.attr !== s.attr) return false;
       const group = qualificationGroup(r);
       if (s.qualification === "general" && !isGeneralBusinessCandidate(r)) return false;
@@ -460,6 +529,30 @@
     return { status, payload, notice: notices[0] };
   }
 
+  async function hydrateRetenderStatuses() {
+    const queue = openTenders.filter((r) => {
+      const info = retenderInfo(r);
+      return info.source === "title" && info.round >= 2 && !bidStatuses[recordKey(r)];
+    }).slice(0, 12);
+    if (!queue.length) return;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < queue.length) {
+        const r = queue[cursor++];
+        try {
+          const result = await lookupBidStatus(r);
+          bidStatuses[recordKey(r)] = { status: result.status, checkedAt: new Date().toISOString() };
+        } catch (error) {
+          console.warn(`招標輪次自動核對失敗：${r.caseNo}`, error);
+        }
+      }
+    }
+    await Promise.all([worker(), worker()]);
+    saveJson(BID_STATUS_KEY, bidStatuses);
+    renderStats();
+    await applyFilters();
+  }
+
   function renderMore() {
     const today = todayIso();
     const batch = filtered.slice(shown, shown + PAGE_SIZE);
@@ -468,6 +561,8 @@
       const key = recordKey(r);
       const deadline = deadlineInfo(r, today);
       const bidStatus = bidStatuses[key]?.status || "";
+      const reoffer = retenderInfo(r);
+      const bidStatusText = bidStatus || (reoffer.source === "title" ? `${reoffer.label} · 查官方` : "查官方招標輪次");
       const li = document.createElement("li");
       li.className = "card";
       const regionBadge = r.region && r.region !== "地區未明"
@@ -497,7 +592,7 @@
             ${regionBadge}
             <span class="badge">${periodLabel(r)}</span>
             ${r.transmissionCount ? `<span class="badge transmission" title="公告更正／傳輸版本，不等同招標輪次">公告傳輸 ${escapeHtml(r.transmissionCount)}</span>` : ""}
-            <button class="badge bid-status ${bidStatus ? "loaded" : ""}" type="button" data-bid-status="${escapeHtml(key)}" title="讀取單案公告的官方招標狀態">${escapeHtml(bidStatus || "查第幾次招標")}</button>
+            <button class="badge bid-status ${bidStatus ? "loaded" : reoffer.source === "title" ? "observed" : ""}" type="button" data-bid-status="${escapeHtml(key)}" title="${reoffer.source === "title" ? "依案名辨識，尚未確認先前是否流標；按此讀取官方招標狀態" : "讀取單案公告的官方招標狀態"}">${escapeHtml(bidStatusText)}</button>
           </div>
           <div class="card-links">
             <button class="detail-trigger" type="button" data-work="${escapeHtml(key)}">投標工作清單${work[key] ? ` · ${escapeHtml(work[key].stage)}` : ""}</button>
@@ -624,7 +719,7 @@
   }
 
   function exportBackup() {
-    download(`標案工作台備份-${todayIso()}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), favorites, savedSearches, work, bidStatuses }, null, 2), "application/json");
+    download(`標案工務台備份-${todayIso()}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), favorites, savedSearches, work, bidStatuses }, null, 2), "application/json");
   }
 
   async function importBackup(file) {
@@ -663,7 +758,7 @@
       const apply = document.createElement("button");
       apply.type = "button";
       apply.textContent = item.name;
-      apply.addEventListener("click", () => { setFilterState(item.state); applyFilters(); });
+      apply.addEventListener("click", () => { setFilterState({ ...item.state, profile: item.state.profile ?? "" }); applyFilters(); });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "chip-del";
@@ -682,10 +777,18 @@
   // ---------- 事件 ----------
   function bindEvents() {
     $("btn-backup").addEventListener("click", exportBackup);
-    $("btn-engineering").addEventListener("click", () => { setFilterState({ attr: "工程類", budget: "100000000", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-my-source").addEventListener("click", () => { setFilterState({ profile: "my", deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-engineering").addEventListener("click", () => { setFilterState({ profile: "", attr: "工程類", budget: "100000000", deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    document.querySelectorAll("[data-urgent-window]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setFilterState({ profile: "", deadlineWindow: button.dataset.urgentWindow === "today" ? "0-0" : "1-1", sort: "deadline-asc", openOnly: true });
+        switchTab("all");
+        $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
     document.querySelectorAll("[data-qualification]").forEach((button) => {
       button.addEventListener("click", () => {
-        setFilterState({ qualification: button.dataset.qualification, sort: "deadline-asc", openOnly: true });
+        setFilterState({ profile: "", qualification: button.dataset.qualification, deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true });
         switchTab("all");
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -696,21 +799,24 @@
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
-    for (const el of [els.method, els.region, els.sort, els.budget, els.deadline, els.open, els.start, els.end]) {
+    for (const el of [els.profile, els.method, els.region, els.sort, els.budget, els.deadline, els.retender, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
     els.qualification.addEventListener("change", () => {
+      els.profile.value = "";
       if (els.qualification.value) els.attr.value = "";
       updateQuickCategoryState();
       applyFilters();
     });
     els.attr.addEventListener("change", () => {
+      els.profile.value = "";
       if (els.attr.value) els.qualification.value = "";
       updateQuickCategoryState();
       applyFilters();
     });
     document.querySelectorAll(".quick-category").forEach((button) => {
       button.addEventListener("click", () => {
+        els.profile.value = "";
         els.attr.value = button.dataset.attr;
         els.qualification.value = "";
         updateQuickCategoryState();
@@ -755,6 +861,7 @@
           bidStatusBtn.textContent = result.status;
           bidStatusBtn.classList.add("loaded");
           bidStatusBtn.title = `官方招標狀態；查詢時間 ${fmtTime(bidStatuses[key].checkedAt)}`;
+          await applyFilters();
         } catch (error) {
           bidStatusBtn.textContent = "查詢失敗，按此重試";
           bidStatusBtn.title = error.message;
@@ -881,8 +988,9 @@
       els.banner.hidden = false; els.banner.className = "sync-banner warn";
       els.banner.textContent = "目前可投標資料無法載入或未通過驗證，以下改顯示歷史資料；不代表目前沒有標案。請重新整理或核對官方網站。";
     }
-    setFilterState(hasOpen ? { openOnly: true, sort: "deadline-asc" } : { openOnly: false });
+    setFilterState(hasOpen ? { profile: "my", deadlineWindow: "14-plus", openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
     await applyFilters();
+    hydrateRetenderStatuses();
   }
 
   init();

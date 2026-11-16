@@ -1,4 +1,4 @@
-const CACHE = "tender-workbench-20261117-1";
+const CACHE = "tender-workbench-20261117-opportunity-1";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "engineering.html", "engineering.css", "engineering.js", "pwa.js", "manifest.webmanifest", "app-icon.svg"];
 
 self.addEventListener("install", event => {

@@ -21,7 +21,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2312382f'/%3E%3Cpath d='M28 25h44v55H28z' fill='%23f4f0e7'/%3E%3Cpath d='M37 41h26M37 53h26M37 65h17' stroke='%23f26a3d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.svg">
-<link rel="stylesheet" href="styles.css?v=20261117-files-pwa-1">
+<link rel="stylesheet" href="styles.css?v=20261117-opportunity-1">
 </head>
 <body>
 <a class="skip-link" href="#results-heading">跳到搜尋結果</a>
@@ -71,12 +71,20 @@
     <section class="snapshot" aria-label="今日標案摘要">
       <article><span>目前可投標</span><strong id="stat-open">—</strong><small>件</small></article>
       <article><span>今日新公告</span><strong id="stat-today">—</strong><small>件</small></article>
-      <article class="urgent-stat"><span>3 天內截止</span><strong id="stat-urgent">—</strong><small>件</small></article>
+      <article class="planning-stat"><span>至少剩 2 週</span><strong id="stat-urgent">—</strong><small>件</small></article>
       <article><span>工程類案件</span><strong id="stat-engineering">—</strong><small>件</small></article>
     </section>
 
     <div id="sync-banner" class="sync-banner" role="status" hidden></div>
-    <section id="deadline-groups" class="deadline-groups" aria-label="依截止時間選標案"></section>
+    <section id="deadline-groups" class="deadline-groups" aria-label="依準備時間選標案"></section>
+
+    <details id="urgent-zone" class="urgent-zone">
+      <summary><span><strong>即將截止，獨立查看</strong><small>不混入主要推薦案件</small></span><span id="urgent-summary-count">—</span></summary>
+      <div class="urgent-grid">
+        <button type="button" data-urgent-window="today"><span>今天截止</span><strong id="stat-deadline-today">—</strong><small>通常已來不及準備，僅供核對</small></button>
+        <button type="button" data-urgent-window="tomorrow"><span>明天截止</span><strong id="stat-deadline-tomorrow">—</strong><small>剩 1 天，請先確認送件方式與時間</small></button>
+      </div>
+    </details>
 
     <section class="qualification-zone" aria-labelledby="qualification-heading">
       <div class="qualification-intro">
@@ -104,6 +112,13 @@
         <button id="btn-clear" class="text-button" type="button">清除全部條件</button>
       </div>
       <div class="filters">
+        <div class="field">
+          <label for="f-profile">案源模式</label>
+          <select id="f-profile">
+            <option value="my" selected>我的案源（彰中投雲室內工程）</option>
+            <option value="">全部案源</option>
+          </select>
+        </div>
         <div class="field">
           <label for="f-attr">採購類別</label>
           <select id="f-attr"><option value="">全部類別</option></select>
@@ -147,13 +162,25 @@
         <div class="field">
           <label for="f-deadline">截止投標／準備時間</label>
           <select id="f-deadline">
-            <option value="2-months" selected>未來 2 個月內截止（預設）</option>
+            <option value="14-plus" selected>至少剩 2 週（預設）</option>
             <option value="">全部截止日</option>
+            <option value="2-plus">至少剩 2 天</option>
             <option value="14-21">剩 2～3 週（14～21 天）</option>
+            <option value="2-13">短期機會（剩 2～13 天）</option>
+            <option value="1-1">明天截止（獨立查看）</option>
+            <option value="0-0">今天截止（僅供核對）</option>
             <option value="0-14">未來 2 週內截止</option>
             <option value="0-21">未來 3 週內截止</option>
             <option value="0-4">剩不到 5 天</option>
-            <option value="14-plus">至少剩 2 週</option>
+            <option value="2-months">未來 2 個月內截止</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-retender">重招觀察</label>
+          <select id="f-retender">
+            <option value="">不限招標輪次</option>
+            <option value="2-plus">第 2 次以上／重新招標</option>
+            <option value="3-plus">第 3 次以上（優先注意）</option>
           </select>
         </div>
         <div class="field">
@@ -167,6 +194,7 @@
         <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></select></div>
       </div>
       <div class="filter-footer">
+        <button id="btn-my-source" class="btn" type="button">我的案源：至少剩 2 週</button>
         <button id="btn-engineering" class="btn secondary" type="button">中小型工程：1 億以下</button>
         <label class="check"><input id="f-open" type="checkbox" checked><span>只看目前可投標案件</span></label>
         <div class="saved-actions">
@@ -180,7 +208,7 @@
       <div class="results-toolbar">
         <div>
           <p class="section-kicker">OPPORTUNITIES</p>
-          <h2 id="results-heading">值得查看的標案</h2>
+          <h2 id="results-heading">來得及準備的標案</h2>
         </div>
         <nav class="tabs" role="tablist" aria-label="結果類型">
           <button id="tab-all" class="tab active" role="tab" aria-selected="true" type="button">搜尋結果</button>
@@ -216,7 +244,7 @@
 </footer>
 
 <noscript><div class="no-script">此網站需要 JavaScript 才能搜尋標案，請啟用後重新整理。</div></noscript>
-<script src="app.js?v=202611161939-engineering-1"></script>
+<script src="app.js?v=20261117-opportunity-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>
