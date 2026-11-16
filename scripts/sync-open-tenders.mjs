@@ -48,11 +48,12 @@ function parseRows(html, sourcePage) {
     const announce=rocDate(text(cells[6]));
     const deadline=rocDate(text(cells[7]));
     const href=/href="([^"]*\/prkms\/urlSelector\/common\/tpam\?pk=[^"]+)"/.exec(cells[2])?.[1] || "";
+    const transmissionCount=text(cells[3]);
     if (!caseNo || !title || !announce || !deadline || deadline < taipeiToday) continue;
     const agency=text(cells[1]);
     rows.push({ kind:"tender", periodStart:announce, periodEnd:announce, deadline, agency, caseNo, title,
       method:text(cells[4]), attr:text(cells[5]), region:regions.find(r=>`${agency} ${title}`.includes(r)) || "地區未明", sourceFile:"政府採購網等標期內查詢",
-      officialUrl:href ? new URL(decode(href),ORIGIN).href : "", budget:text(cells[8]), sourcePage });
+      officialUrl:href ? new URL(decode(href),ORIGIN).href : "", budget:text(cells[8]), transmissionCount, sourcePage });
   }
   return rows;
 }
@@ -76,6 +77,6 @@ for(let page=2;page<=pages;page++) {
 }
 const unique=[...new Map(records.map(r=>[`${r.agency}|${r.caseNo}`,r])).values()]
   .sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
-const payload={version:3,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl,pageKey};
+const payload={version:4,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl,pageKey};
 mkdirSync(dirname(OUT),{recursive:true}); writeFileSync(`${OUT}.tmp`,JSON.stringify(payload)); renameSync(`${OUT}.tmp`,OUT);
 console.log(`Saved ${unique.length} currently open tenders.`);

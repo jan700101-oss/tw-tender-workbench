@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#12382f">
+  <title>公共工程文書中心｜標案工務台</title>
+  <meta name="description" content="公共工程從開工、施工、估驗變更、完工、竣工驗收到保固的文書流程與進度追蹤。">
+  <link rel="stylesheet" href="styles.css?v=20261116-engineering-1">
+  <link rel="stylesheet" href="engineering.css?v=20261116-engineering-1">
+</head>
+<body class="engineering-page">
+<a class="skip-link" href="#workflow">跳到工程流程</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">標</span><span><strong>標案工務台</strong><small>公共工程文書中心</small></span></a>
+    <div class="header-actions"><span class="data-status">資料存在此瀏覽器</span><a class="source-link" href="./">返回找標案</a></div>
+  </div>
+</header>
+
+<main>
+  <section class="engineering-hero">
+    <div class="wrap engineering-hero-grid">
+      <div><p class="eyebrow">PUBLIC WORKS DOCUMENT CONTROL</p><h1>工程文書<br><em>不漏件</em></h1><p>把開工、施工、估驗變更、完工、竣工驗收與保固，收斂成一個可追蹤、可備份、可產生草稿的流程。</p></div>
+      <aside class="legal-note"><strong>使用原則</strong><p>本清單依公共工程常見流程與工程會制度整理；個案仍以契約、招標文件、監造計畫及機關指定表單為準。系統不會替未確認資料補值。</p></aside>
+    </div>
+  </section>
+
+  <div class="wrap engineering-shell">
+    <section class="project-panel" aria-labelledby="project-heading">
+      <div class="section-heading"><div><p class="section-kicker">PROJECT</p><h2 id="project-heading">工程專案</h2></div><button id="new-project" class="btn secondary" type="button">＋ 新增專案</button></div>
+      <div class="project-picker"><label class="field">目前專案<select id="project-select"></select></label><div class="project-actions"><button id="export-project" class="btn secondary" type="button">備份 JSON</button><label class="btn secondary" for="import-project">匯入備份</label><input id="import-project" type="file" accept="application/json,.json" hidden><button id="delete-project" class="text-button danger-text" type="button">刪除專案</button></div></div>
+      <form id="project-form" class="project-form">
+        <label class="field field-wide">工程名稱<input name="name" required maxlength="200"></label>
+        <label class="field">主辦機關<input name="agency" maxlength="160"></label>
+        <label class="field">標案／契約編號<input name="caseNo" maxlength="100"></label>
+        <label class="field">契約金額<input name="contractAmount" inputmode="decimal" placeholder="待確認"></label>
+        <label class="field">預定開工日<input name="plannedStart" type="date"></label>
+        <label class="field">實際開工日<input name="actualStart" type="date"></label>
+        <label class="field">契約完工日<input name="plannedFinish" type="date"></label>
+        <label class="field">實際完工日<input name="actualFinish" type="date"></label>
+        <label class="field">專案負責人<input name="owner" maxlength="80"></label>
+        <label class="field">監造／聯絡窗口<input name="supervisor" maxlength="100"></label>
+        <label class="field field-wide">專案備註<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
+        <div class="form-actions"><button class="btn" type="submit">儲存專案資料</button><span id="save-status" role="status"></span></div>
+      </form>
+    </section>
+
+    <section class="workflow-summary" aria-label="文書進度摘要">
+      <article><span>總項目</span><strong id="stat-total">0</strong></article>
+      <article><span>已完成</span><strong id="stat-done">0</strong></article>
+      <article><span>待處理</span><strong id="stat-open">0</strong></article>
+      <article class="urgent-stat"><span>逾期</span><strong id="stat-overdue">0</strong></article>
+    </section>
+
+    <section id="workflow" class="workflow-panel" aria-labelledby="workflow-heading">
+      <div class="section-heading workflow-heading"><div><p class="section-kicker">WORKFLOW</p><h2 id="workflow-heading">公共工程文書流程</h2></div><div class="workflow-tools"><label class="field compact">篩選<select id="status-filter"><option value="">全部狀態</option><option>未開始</option><option>準備中</option><option>送審中</option><option>退補</option><option>已核定</option><option>已完成</option><option>不適用</option><option value="overdue">只看逾期</option></select></label><button id="export-csv" class="btn secondary" type="button">匯出清單 CSV</button></div></div>
+      <nav id="phase-nav" class="phase-nav" aria-label="工程階段"></nav>
+      <div id="phase-guidance" class="phase-guidance"></div>
+      <div id="document-list" class="document-list"></div>
+    </section>
+
+    <section class="template-panel" aria-labelledby="template-heading">
+      <div class="section-heading"><div><p class="section-kicker">DRAFTS</p><h2 id="template-heading">常用文件草稿</h2></div><p>缺少資料會標示「【待確認】」，送出前須改用機關指定格式並逐項核對。</p></div>
+      <div id="template-list" class="template-list"></div>
+    </section>
+
+    <section class="reference-panel" aria-labelledby="reference-heading">
+      <div><p class="section-kicker">OFFICIAL REFERENCES</p><h2 id="reference-heading">官方依據與界線</h2></div>
+      <ul>
+        <li><a href="https://www.pcc.gov.tw/content/index?eid=2511&amp;lang=1&amp;type=C" target="_blank" rel="noopener">工程會：公共工程施工品質管理相關作業</a></li>
+        <li><a href="https://www.pcc.gov.tw/content/index?eid=2612&amp;type=C" target="_blank" rel="noopener">工程會：品質計畫、監造計畫與品質管理制度</a></li>
+        <li><a href="https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=A0030058" target="_blank" rel="noopener">全國法規資料庫：政府採購法施行細則</a></li>
+      </ul>
+      <p>完成通知、初驗、驗收等日期會受契約條款、機關程序、是否需要初驗及文件齊備日影響；本系統只做提醒，不自動宣稱已合法送達或完成驗收。</p>
+    </section>
+  </div>
+</main>
+<dialog id="item-dialog"><form id="item-form" class="detail-panel" method="dialog"><header><div><span id="item-phase"></span><h2 id="item-title"></h2></div><button class="detail-close" value="cancel" aria-label="關閉">×</button></header><p id="item-help" class="work-notice"></p><div class="detail-grid"><label class="field">狀態<select name="status"><option>未開始</option><option>準備中</option><option>送審中</option><option>退補</option><option>已核定</option><option>已完成</option><option>不適用</option></select></label><label class="field">負責人<input name="owner" maxlength="80"></label><label class="field">期限<input name="due" type="date"></label><label class="field">文件／雲端連結<input name="link" type="url" placeholder="https://" maxlength="1000"></label><label class="field detail-field wide">紀錄、退補原因或待確認事項<textarea name="notes" rows="5" maxlength="10000"></textarea></label></div><div class="detail-actions"><button class="btn" value="save">儲存項目</button><button class="btn secondary" value="cancel">取消</button></div></form></dialog>
+<footer class="site-footer"><div class="wrap footer-grid"><div><strong>公共工程文書中心</strong><p>把文件責任、期限與版本留在專案裡。</p></div><div class="footer-note"><p>資料只保存在目前瀏覽器；請定期匯出 JSON。未上傳到網站伺服器。</p></div></div></footer>
+<script src="engineering.js?v=20261116-engineering-1"></script>
+</body>
+</html>

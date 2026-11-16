@@ -1,0 +1,38 @@
+import { readFile } from "node:fs/promises";
+
+const [html, css, js, app, index] = await Promise.all([
+  readFile("docs/engineering.html", "utf8"),
+  readFile("docs/engineering.css", "utf8"),
+  readFile("docs/engineering.js", "utf8"),
+  readFile("docs/app.js", "utf8"),
+  readFile("docs/index.html", "utf8"),
+]);
+
+const failures = [];
+const assert = (condition, message) => { if (!condition) failures.push(message); };
+const phaseIds = ["prepare", "start", "build", "payment", "finish", "accept", "warranty"];
+const itemMatches = [...js.matchAll(/^\s*\["(prepare|start|build|payment|finish|accept|warranty)","([^"]+)",/gm)];
+const itemIds = itemMatches.map((match) => match[2]);
+const templateBlock = js.slice(js.indexOf("const templates = ["), js.indexOf("];", js.indexOf("const templates = [")) + 2);
+const templateMatches = [...templateBlock.matchAll(/\["([^"]+)","[^"]+","[^"]+"\]/g)];
+
+assert(itemMatches.length === 55, `文書項目應為 55，實際 ${itemMatches.length}`);
+assert(new Set(itemIds).size === itemIds.length, "文書項目 ID 不可重複");
+for (const phase of phaseIds) assert(itemMatches.some((match) => match[1] === phase), `缺少階段：${phase}`);
+assert(templateMatches.length === 11, `草稿範本應為 11，實際 ${templateMatches.length}`);
+assert(/existing = Object\.values\(projects\)\.find/.test(js), "缺少標案帶入去重邏輯");
+assert(/twb\.engineeringProjects\.v1/.test(js), "缺少工程專案儲存鍵");
+assert(/備份 JSON/.test(html) && /匯入備份/.test(html) && /匯出清單 CSV/.test(html), "缺少備份或清單匯出入口");
+assert(/pcc\.gov\.tw/.test(html) && /law\.moj\.gov\.tw/.test(html), "缺少官方依據連結");
+assert(/engineering\.html\?tender=/.test(app), "案件工作台尚未串接工程文書中心");
+assert((index.match(/engineering\.html/g) || []).length >= 2, "首頁缺少工程文書中心入口");
+assert(/@media \(max-width: 700px\)/.test(css), "缺少手機版樣式");
+assert(![html, css, js, app, index].some((value) => value.includes("�")), "檔案含 U+FFFD 亂碼");
+
+if (failures.length) {
+  console.error(failures.map((message) => `- ${message}`).join("\n"));
+  process.exit(1);
+}
+
+const perPhase = Object.fromEntries(phaseIds.map((phase) => [phase, itemMatches.filter((match) => match[1] === phase).length]));
+console.log(JSON.stringify({ passed: true, items: itemMatches.length, templates: templateMatches.length, perPhase }, null, 2));

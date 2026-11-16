@@ -14,8 +14,9 @@ const latest = records.reduce((date,r) => r.periodStart > date ? r.periodStart :
 if (!validDate(latest) || Math.abs(Date.parse(latest)-Date.parse(today)) > 7*86400000) errors.push("latest announcement outside seven-day window");
 if (/\uFFFD|Ã.|Â[\u0080-\u00ff]|銝|嚙踝蕭/.test(JSON.stringify(payload))) errors.push("replacement character or suspected mojibake");
 for(const [i,r] of records.entries()){
-  for(const field of ["periodStart","deadline","agency","caseNo","title","method","attr","officialUrl","sourcePage"])
+  for(const field of ["periodStart","deadline","agency","caseNo","title","method","attr","officialUrl","transmissionCount","sourcePage"])
     if(!String(r[field]||"").trim())errors.push(`row ${i+1}: missing ${field}`);
+  if(!/^\d+$/.test(String(r.transmissionCount||"")))errors.push(`row ${i+1}: invalid transmissionCount`);
   if(!validDate(r.deadline)||r.deadline<today)errors.push(`row ${i+1}: invalid/expired deadline ${r.deadline}`);
   if(!validDate(r.periodStart))errors.push(`row ${i+1}: invalid announcement date`);
   try { const url = new URL(r.officialUrl); if(url.origin !== "https://web.pcc.gov.tw" || url.pathname !== "/prkms/urlSelector/common/tpam" || !url.searchParams.get("pk")) throw new Error(); }
@@ -42,7 +43,7 @@ async function worker(){while(cursor<pages.length){const[page,items]=pages[curso
 }catch(e){errors.push(`official page unavailable ${page}: ${e.message}`);}}}
 await Promise.all(Array.from({length:4},worker));
 const passedRows=checked.filter(x=>x.caseNo&&x.title&&x.deadline&&x.link).length;
-const report={version:2,passed:errors.length===0,validatedAt:new Date().toISOString(),today,source:payload.source,
+const report={version:3,passed:errors.length===0,validatedAt:new Date().toISOString(),today,source:payload.source,
  officialResultCount:payload.officialResultCount,recordCount:records.length,expiredCount:records.filter(r=>r.deadline<today).length,uniqueCount:keys.size,
  officialRowsRequested:samples.length,officialRowsPassed:passedRows,officialPagesChecked:pages.length,errors:errors.slice(0,100),samples:checked};
 writeFileSync(`${REPORT}.tmp`,JSON.stringify(report));renameSync(`${REPORT}.tmp`,REPORT);

@@ -11,6 +11,7 @@
   const FAV_KEY = "twb.favorites.v2";
   const SEARCH_KEY = "twb.savedSearches.v2";
   const WORK_KEY = "twb.work.v1";
+  const BID_STATUS_KEY = "twb.bidStatus.v1";
   const stages = ["評估中", "準備投標", "已送件", "履約中", "驗收保固", "不投標"];
   const taskLabels = ["核對官方公告與更正", "下載投標須知、契約與圖說", "確認資格、證照與實績", "確認現勘與提問期限", "確認押標金與資金", "完成估價與標價清單", "確認用印、封裝、送件時間", "開工、材料送審與施工紀錄", "竣工、驗收與保固文件"];
   const specialistTerms = /工程|營造|土木|建築|室內裝修|裝修工程|施工|施作|補修|修繕|維修|維護|汰換|加固|改善工作|油槽|邊坡|孔蓋|機電|水電|電器承裝|消防|空調|電梯|昇降|鍋爐|瓦斯|天然氣|管線|監造|技師|建築師|測量|測繪|地質|鑽探|結構|耐震|職業安全|安裝服務|設備安裝|檢修|專業服務|調查|研究|諮詢|顧問|檢驗|檢測|稽核|查核|鑑定|認證|醫療器材|醫療設備|血壓|血氧|手術|護理|照護|社工|托育|藥品|藥劑|疫苗|試劑|抗體|放射|保全|警衛|旅行|旅遊|戶外教育|校外教學|考察|參訪|體驗營|廢棄物|清運|病媒|農藥|獸醫|拖吊|槍|彈藥|火藥|砲|爆裂物/;
@@ -79,9 +80,11 @@
   let favorites = loadJson(FAV_KEY, {});        // key -> record
   let savedSearches = loadJson(SEARCH_KEY, []); // [{name, state}]
   let work = loadJson(WORK_KEY, {});
+  let bidStatuses = loadJson(BID_STATUS_KEY, {}); // key -> {status, checkedAt}
   if (!favorites || typeof favorites !== "object" || Array.isArray(favorites)) favorites = {};
   if (!Array.isArray(savedSearches)) savedSearches = [];
   if (!work || typeof work !== "object" || Array.isArray(work)) work = {};
+  if (!bidStatuses || typeof bidStatuses !== "object" || Array.isArray(bidStatuses)) bidStatuses = {};
 
   function recordKey(r) {
     return [r.kind, r.agency, r.caseNo].join("|");
@@ -439,6 +442,24 @@
     return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  async function lookupBidStatus(r) {
+    const searchRes = await fetch(`https://pcc-api.openfun.app/api/searchbytitle?query=${encodeURIComponent(r.title)}`, { signal: AbortSignal.timeout(20000) });
+    if (!searchRes.ok) throw new Error(`搜尋 API ${searchRes.status}`);
+    const search = await searchRes.json();
+    const hit = search.records?.find((x) => x.job_number === r.caseNo && (!x.unit_name || x.unit_name === r.agency))
+      || search.records?.find((x) => x.job_number === r.caseNo);
+    if (!hit?.unit_id) throw new Error("找不到相符的單案資料");
+    const detailRes = await fetch(`https://pcc-api.openfun.app/api/tender?unit_id=${encodeURIComponent(hit.unit_id)}&job_number=${encodeURIComponent(r.caseNo)}`, { signal: AbortSignal.timeout(20000) });
+    if (!detailRes.ok) throw new Error(`詳情 API ${detailRes.status}`);
+    const payload = await detailRes.json();
+    const notices = (payload.records || [])
+      .filter((x) => x.detail?.["招標資料:招標狀態"])
+      .sort((a, b) => Number(b.date || 0) - Number(a.date || 0));
+    const status = notices[0]?.detail?.["招標資料:招標狀態"];
+    if (!status) throw new Error("官方公告未提供招標狀態");
+    return { status, payload, notice: notices[0] };
+  }
+
   function renderMore() {
     const today = todayIso();
     const batch = filtered.slice(shown, shown + PAGE_SIZE);
@@ -446,6 +467,7 @@
     for (const r of batch) {
       const key = recordKey(r);
       const deadline = deadlineInfo(r, today);
+      const bidStatus = bidStatuses[key]?.status || "";
       const li = document.createElement("li");
       li.className = "card";
       const regionBadge = r.region && r.region !== "地區未明"
@@ -474,6 +496,8 @@
             <span class="badge">${escapeHtml(r.method || "招標方式未提供")}</span>
             ${regionBadge}
             <span class="badge">${periodLabel(r)}</span>
+            ${r.transmissionCount ? `<span class="badge transmission" title="公告更正／傳輸版本，不等同招標輪次">公告傳輸 ${escapeHtml(r.transmissionCount)}</span>` : ""}
+            <button class="badge bid-status ${bidStatus ? "loaded" : ""}" type="button" data-bid-status="${escapeHtml(key)}" title="讀取單案公告的官方招標狀態">${escapeHtml(bidStatus || "查第幾次招標")}</button>
           </div>
           <div class="card-links">
             <button class="detail-trigger" type="button" data-work="${escapeHtml(key)}">投標工作清單${work[key] ? ` · ${escapeHtml(work[key].stage)}` : ""}</button>
@@ -528,12 +552,16 @@
       const detailRes = await fetch(`https://pcc-api.openfun.app/api/tender?unit_id=${encodeURIComponent(hit.unit_id)}&job_number=${encodeURIComponent(caseNo)}`);
       if (!detailRes.ok) throw new Error(`詳情 API ${detailRes.status}`);
       const payload = await detailRes.json();
-      const notice = payload.records?.find((x) => x.brief?.type?.includes("招標") && x.detail) || payload.records?.find((x) => x.detail);
+      const notice = [...(payload.records || [])]
+        .filter((x) => x.detail && (x.detail["招標資料:招標狀態"] || x.brief?.type?.includes("招標") || x.brief?.type?.includes("公開取得")))
+        .sort((a, b) => Number(b.date || 0) - Number(a.date || 0))[0]
+        || payload.records?.find((x) => x.detail);
       if (!notice?.detail) throw new Error("此案目前沒有可顯示的詳細公告");
       const d = notice.detail;
       const val = (key) => d[key] || "未提供";
       const fields = [
-        ["預算金額", "採購資料:預算金額"], ["招標方式", "招標資料:招標方式"], ["決標方式", "招標資料:決標方式"],
+        ["預算金額", "採購資料:預算金額"], ["招標方式", "招標資料:招標方式"], ["招標狀態／第幾次", "招標資料:招標狀態"],
+        ["公告傳輸次數", "招標資料:新增公告傳輸次數"], ["決標方式", "招標資料:決標方式"],
         ["公告日", "招標資料:公告日"], ["截止投標", "領投開標:截止投標"], ["開標時間", "領投開標:開標時間"],
         ["開標地點", "領投開標:開標地點"], ["履約地點", "其他:履約地點"], ["履約期限", "其他:履約期限"],
         ["押標金", "領投開標:是否須繳納押標金:押標金額度"], ["聯絡人", "機關資料:聯絡人"], ["聯絡電話", "機關資料:聯絡電話"],
@@ -569,6 +597,11 @@
       <label class="field detail-field wide">紀錄與待確認事項<textarea name="notes" rows="4" maxlength="10000">${escapeHtml(item.notes)}</textarea></label></div>
       <fieldset class="work-tasks"><legend>投標與履約準備</legend>${taskLabels.map((label,i) => `<label class="check"><input type="checkbox" name="task" value="${i}"${item.tasks?.includes(i) ? " checked" : ""}>${label}</label>`).join("")}</fieldset>
       <div class="detail-actions"><button class="btn" type="submit">保存並加入追蹤</button><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener">核對官方公告 ↗</a></div><p id="work-status" role="status"></p></form>`;
+    const engineeringLink = document.createElement('a');
+    engineeringLink.className = 'btn';
+    engineeringLink.textContent = '建立工程文書專案';
+    engineeringLink.href = `engineering.html?tender=${encodeURIComponent(JSON.stringify({ title:r.title, agency:r.agency, caseNo:r.caseNo, budget:r.budget, deadline:r.deadline, officialUrl:officialSearchUrl(r) }))}`;
+    els.detailContent.querySelector('.detail-actions').appendChild(engineeringLink);
     const docLink = document.createElement('a');
     docLink.className = 'btn secondary'; docLink.textContent = '帶入本機文件助理（須先啟動整合版）';
     docLink.href = `http://127.0.0.1:8796/?tender=${encodeURIComponent(JSON.stringify({ title:r.title, attr:r.attr, officialUrl:officialSearchUrl(r) }))}`;
@@ -591,7 +624,7 @@
   }
 
   function exportBackup() {
-    download(`標案工作台備份-${todayIso()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), favorites, savedSearches, work }, null, 2), "application/json");
+    download(`標案工作台備份-${todayIso()}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), favorites, savedSearches, work, bidStatuses }, null, 2), "application/json");
   }
 
   async function importBackup(file) {
@@ -600,7 +633,7 @@
       if (file.size > 20000000) throw new Error("備份超過 20 MB");
       const data = JSON.parse(await file.text());
       const object = x => x && typeof x === "object" && !Array.isArray(x);
-      if (data.version !== 1 || !object(data.favorites) || !object(data.work) || !Array.isArray(data.savedSearches)) throw new Error("不是有效的工作台備份");
+      if (![1, 2].includes(data.version) || !object(data.favorites) || !object(data.work) || !Array.isArray(data.savedSearches) || (data.bidStatuses != null && !object(data.bidStatuses))) throw new Error("不是有效的工作台備份");
       const rows = Object.values(data.favorites);
       if (rows.some(r => !object(r) || ["kind", "agency", "caseNo", "title", "periodStart", "periodEnd"].some(k => typeof r[k] !== "string") || (r.officialUrl && !/^https:\/\/web\.pcc\.gov\.tw\//.test(r.officialUrl)))) throw new Error("案件欄位或官方網址不正確");
       if (Object.values(data.work).some(w => !object(w) || !stages.includes(w.stage) || !Array.isArray(w.tasks) || w.tasks.some(t => !Number.isInteger(t) || t < 0 || t >= taskLabels.length) || ["owner","followUp","notes"].some(k => typeof w[k] !== "string"))) throw new Error("工作清單格式不正確");
@@ -608,16 +641,17 @@
       // Merge-only: retain existing records and work where a key already exists.
       favorites = { ...Object.fromEntries(rows.map(r => [recordKey(r), r])), ...favorites };
       work = { ...data.work, ...work };
+      bidStatuses = { ...(data.bidStatuses || {}), ...bidStatuses };
       for (const s of data.savedSearches) if (!savedSearches.some(x => x.name === s.name && JSON.stringify(x.state) === JSON.stringify(s.state))) savedSearches.push(s);
-      saveJson(FAV_KEY, favorites); saveJson(WORK_KEY, work); saveJson(SEARCH_KEY, savedSearches);
+      saveJson(FAV_KEY, favorites); saveJson(WORK_KEY, work); saveJson(SEARCH_KEY, savedSearches); saveJson(BID_STATUS_KEY, bidStatuses);
       renderSavedChips(); await applyFilters(); alert("備份已合併，原有資料保留。");
     } catch (error) { alert(`無法匯入：${error.message}`); }
   }
 
   function exportCsv() {
     const cell = v => `"${String(v ?? "").replace(/^\s*[=+@-]/, "'$&").replaceAll('"','""')}"`;
-    const rows = filtered.map(r => { const w = work[recordKey(r)] || {}; return [r.title,r.agency,r.caseNo,r.deadline,r.budget,w.stage,w.owner,w.followUp,w.notes,officialSearchUrl(r)]; });
-    download(`標案清單-${todayIso()}.csv`, "\uFEFF" + [["案名","機關","案號","截止日","預算","進度","負責人","追蹤日期","紀錄","官方網址"], ...rows].map(row => row.map(cell).join(",")).join("\r\n"), "text/csv;charset=utf-8");
+    const rows = filtered.map(r => { const key = recordKey(r), w = work[key] || {}; return [r.title,r.agency,r.caseNo,bidStatuses[key]?.status || "待查詢",r.transmissionCount || "未提供",r.deadline,r.budget,w.stage,w.owner,w.followUp,w.notes,officialSearchUrl(r)]; });
+    download(`標案清單-${todayIso()}.csv`, "\uFEFF" + [["案名","機關","案號","招標狀態／第幾次","公告傳輸次數","截止日","預算","進度","負責人","追蹤日期","紀錄","官方網址"], ...rows].map(row => row.map(cell).join(",")).join("\r\n"), "text/csv;charset=utf-8");
   }
 
   // ---------- 常用搜尋 ----------
@@ -706,7 +740,29 @@
     els.tabAll.addEventListener("click", () => switchTab("all"));
     els.tabFav.addEventListener("click", () => switchTab("fav"));
 
-    els.results.addEventListener("click", (e) => {
+    els.results.addEventListener("click", async (e) => {
+      const bidStatusBtn = e.target.closest("button[data-bid-status]");
+      if (bidStatusBtn) {
+        const key = bidStatusBtn.dataset.bidStatus;
+        const r = filtered.find((item) => recordKey(item) === key) || favorites[key];
+        if (!r) return;
+        bidStatusBtn.disabled = true;
+        bidStatusBtn.textContent = "查詢中…";
+        try {
+          const result = await lookupBidStatus(r);
+          bidStatuses[key] = { status: result.status, checkedAt: new Date().toISOString() };
+          saveJson(BID_STATUS_KEY, bidStatuses);
+          bidStatusBtn.textContent = result.status;
+          bidStatusBtn.classList.add("loaded");
+          bidStatusBtn.title = `官方招標狀態；查詢時間 ${fmtTime(bidStatuses[key].checkedAt)}`;
+        } catch (error) {
+          bidStatusBtn.textContent = "查詢失敗，按此重試";
+          bidStatusBtn.title = error.message;
+        } finally {
+          bidStatusBtn.disabled = false;
+        }
+        return;
+      }
       const workBtn = e.target.closest("button[data-work]");
       if (workBtn) { openWork(workBtn.dataset.work); return; }
       const detailBtn = e.target.closest("button.detail-trigger");

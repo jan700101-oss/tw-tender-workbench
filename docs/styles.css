@@ -137,6 +137,11 @@ kbd { border: 1px solid #d9ddd9; border-bottom-width: 2px; border-radius: 6px; p
 .badge.qualification { border-color: #83b49a; background: #edf8f1; color: #155b38; font-weight: 800; }
 .badge.qualification.caution { border-color: #e6c46e; background: #fff8df; color: #765109; }
 .badge.region { color: var(--forest-2); }
+.badge.transmission { border-style: dashed; }
+.bid-status { font: inherit; cursor: pointer; }
+.bid-status:hover, .bid-status:focus-visible { border-color: var(--orange); color: var(--forest); outline: none; }
+.bid-status.loaded { border-color: #83b49a; background: #edf8f1; color: #155b38; font-weight: 800; }
+.bid-status:disabled { cursor: wait; opacity: .7; }
 .card-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 15px; font-size: .8rem; }
 .card-links a, .detail-trigger { border: 0; padding: 0; background: transparent; color: var(--forest-2); cursor: pointer; font: inherit; font-weight: 700; text-decoration: underline; text-decoration-color: #b8c8bf; text-underline-offset: 3px; }
 .card-links .primary-link { display: inline-flex; border: 0; border-radius: 8px; padding: 8px 11px; background: var(--forest); color: white; text-decoration: none; }
