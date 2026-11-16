@@ -44,6 +44,8 @@ a { color: inherit; }
 .data-status { color: #c9ddd3; }
 .data-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #65d1a0; box-shadow: 0 0 0 4px rgba(101,209,160,.13); }
 .source-link { color: white; text-underline-offset: 4px; }
+.install-button { border: 1px solid rgba(255,255,255,.28); border-radius: 999px; padding: 6px 11px; background: rgba(255,255,255,.08); color: white; cursor: pointer; font-size: .78rem; }
+.install-button:hover, .install-button:focus-visible { border-color: var(--orange); background: var(--orange); outline: none; }
 
 .hero { position: relative; overflow: hidden; background: var(--forest); color: white; padding: 74px 0 104px; }
 .hero::before { content: ""; position: absolute; inset: 0; opacity: .09; background-image: linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(90deg, black, transparent 62%); }
@@ -216,7 +218,9 @@ kbd { border: 1px solid #d9ddd9; border-bottom-width: 2px; border-radius: 6px; p
 @media (max-width: 640px) {
   .wrap { width: min(100% - 24px, 1160px); }
   .topbar { min-height: 62px; }
-  .brand small, .source-link { display: none; }
+  .brand small, .source-link:not(.mobile-nav) { display: none; }
+  .header-actions { gap: 9px; }
+  .install-button { padding: 5px 9px; }
   .data-status { max-width: 136px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hero { padding: 40px 0 82px; }
   .hero::after { opacity: .45; }

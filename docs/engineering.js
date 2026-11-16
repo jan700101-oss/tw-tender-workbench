@@ -1,6 +1,9 @@
 (() => {
   "use strict";
   const STORAGE_KEY = "twb.engineeringProjects.v1";
+  const FILE_DB = "twb-engineering-files-v1";
+  const FILE_STORE = "attachments";
+  const MAX_FILE_SIZE = 25 * 1024 * 1024;
   const statuses = ["未開始", "準備中", "送審中", "退補", "已核定", "已完成", "不適用"];
   const phases = [
     { id: "prepare", name: "開工前", note: "先以契約、招標文件及監造要求建立送審總表；施工計畫、品質計畫、施工圖及檢驗文件的名稱與期限須逐案核對。" },
@@ -85,8 +88,40 @@
   let activeId = localStorage.getItem(`${STORAGE_KEY}.active`) || Object.keys(projects)[0] || "";
   let activePhase = "prepare";
   let editingItem = "";
+  let dbPromise;
 
   function load() { try { const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); return value && typeof value === "object" ? value : {}; } catch { return {}; } }
+  function openFileDb() {
+    if (!window.indexedDB) return Promise.reject(new Error("此瀏覽器不支援本機附件資料庫"));
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(FILE_DB, 1);
+      request.onupgradeneeded = () => {
+        const store = request.result.createObjectStore(FILE_STORE, {keyPath:"id"});
+        store.createIndex("projectId", "projectId", {unique:false});
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("無法開啟附件資料庫"));
+    });
+    return dbPromise;
+  }
+  async function fileRequest(mode, action) {
+    const db = await openFileDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FILE_STORE, mode);
+      const store = tx.objectStore(FILE_STORE);
+      let request;
+      try { request = action(store); } catch (error) { reject(error); return; }
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("附件操作失敗"));
+    });
+  }
+  async function projectAttachments(projectId) { return (await fileRequest("readonly", store => store.index("projectId").getAll(projectId))) || []; }
+  async function itemAttachments(projectId, itemId) { return (await projectAttachments(projectId)).filter(file => file.itemId === itemId).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")); }
+  async function saveAttachment(file) { return fileRequest("readwrite", store => store.put(file)); }
+  async function getAttachment(id) { return fileRequest("readonly", store => store.get(id)); }
+  async function deleteAttachment(id) { return fileRequest("readwrite", store => store.delete(id)); }
+  async function deleteProjectAttachments(projectId) { const files=await projectAttachments(projectId); await Promise.all(files.map(file=>deleteAttachment(file.id))); }
   function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); localStorage.setItem(`${STORAGE_KEY}.active`, activeId); }
   function baseProject(data={}) { const id=uid(); return { id, name:data.title || "待命名工程", agency:data.agency || "", caseNo:data.caseNo || "", contractAmount:data.budget || "", plannedStart:"", actualStart:"", plannedFinish:"", actualFinish:"", owner:"", supervisor:"", notes:data.officialUrl ? `官方公告：${data.officialUrl}` : "", items:{}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() }; }
   function current() { return projects[activeId]; }
@@ -105,13 +140,37 @@
   function phaseProgress(id) { const list=docs.filter(d=>d.phase===id); const done=list.filter(d=>["已完成","不適用"].includes(itemState(d.id).status)).length; return `${done}/${list.length}`; }
   function renderNav() { $("phase-nav").innerHTML=phases.map(p=>`<button class="phase-button ${p.id===activePhase?"active":""} ${phaseProgress(p.id).startsWith(docs.filter(d=>d.phase===p.id).length+"/")?"complete":""}" type="button" data-phase="${p.id}">${p.name}<span>${phaseProgress(p.id)}</span></button>`).join(""); $("phase-guidance").textContent=phases.find(p=>p.id===activePhase).note; }
   function statusClass(status) { if (["已完成","不適用","已核定"].includes(status)) return "done"; if (["準備中","送審中"].includes(status)) return "review"; if (status==="退補") return "problem"; return ""; }
-  function renderDocs() { const filter=$("status-filter").value; const list=docs.filter(d=>d.phase===activePhase).filter(d=>{const s=itemState(d.id); return !filter || (filter==="overdue"?isOverdue(s):s.status===filter);}); $("document-list").innerHTML=list.length?list.map(d=>{const s=itemState(d.id); return `<article class="document-item"><div class="document-title"><strong>${esc(d.title)}<span class="required ${d.required?"":"conditional"}">${d.required?"常用必備":"視個案"}</span></strong><p>${esc(d.help)}</p></div><div class="doc-owner">責任：${esc(s.owner||d.owner)}</div><div class="doc-due ${isOverdue(s)?"overdue":""}">${s.due?`${isOverdue(s)?"已逾期 ":"期限 "}${esc(s.due)}`:"期限待設定"}<br><span class="status-pill ${statusClass(s.status)}">${esc(s.status)}</span></div><button class="btn secondary edit-item" data-id="${d.id}" type="button">更新</button></article>`;}).join(""):`<p class="work-notice">這個階段沒有符合篩選條件的項目。</p>`; }
+  async function renderDocs() {
+    const projectId=current()?.id, phase=activePhase, filter=$("status-filter").value;
+    const files = projectId ? await projectAttachments(projectId).catch(()=>[]) : [];
+    if (projectId !== current()?.id || phase !== activePhase) return;
+    const counts=files.reduce((map,file)=>map.set(file.itemId,(map.get(file.itemId)||0)+1),new Map());
+    const list=docs.filter(d=>d.phase===activePhase).filter(d=>{const s=itemState(d.id); return !filter || (filter==="overdue"?isOverdue(s):s.status===filter);});
+    $("document-list").innerHTML=list.length?list.map(d=>{const s=itemState(d.id), count=counts.get(d.id)||0; return `<article class="document-item"><div class="document-title"><strong>${esc(d.title)}<span class="required ${d.required?"":"conditional"}">${d.required?"常用必備":"視個案"}</span></strong><p>${esc(d.help)}</p>${count?`<span class="attachment-count">附件 ${count} 份</span>`:""}</div><div class="doc-owner">責任：${esc(s.owner||d.owner)}</div><div class="doc-due ${isOverdue(s)?"overdue":""}">${s.due?`${isOverdue(s)?"已逾期 ":"期限 "}${esc(s.due)}`:"期限待設定"}<br><span class="status-pill ${statusClass(s.status)}">${esc(s.status)}</span></div><button class="btn secondary edit-item" data-id="${d.id}" type="button">更新</button></article>`;}).join(""):`<p class="work-notice">這個階段沒有符合篩選條件的項目。</p>`;
+  }
   function renderSummary() { const states=docs.map(d=>itemState(d.id)); $("stat-total").textContent=states.length; $("stat-done").textContent=states.filter(s=>["已完成","不適用"].includes(s.status)).length; $("stat-open").textContent=states.filter(s=>!["已完成","不適用"].includes(s.status)).length; $("stat-overdue").textContent=states.filter(isOverdue).length; }
-  function renderTemplates() { $("template-list").innerHTML=templates.map(([id,title,desc])=>`<article class="template-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><button class="btn secondary draft" data-template="${id}" type="button">下載可編輯草稿</button></article>`).join(""); }
+  function renderTemplates() { $("template-list").innerHTML=templates.map(([id,title,desc])=>`<article class="template-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><div class="template-actions"><button class="btn secondary draft" data-template="${id}" data-format="doc" type="button">Word</button><button class="btn secondary draft" data-template="${id}" data-format="md" type="button">Markdown</button><button class="btn secondary draft" data-template="${id}" data-format="print" type="button">列印／PDF</button></div></article>`).join(""); }
   function render() { populateSelect(); fillForm(); renderSummary(); renderNav(); renderDocs(); renderTemplates(); }
-  function openItem(id) { const d=docs.find(x=>x.id===id), s=itemState(id); editingItem=id; $("item-phase").textContent=phases.find(p=>p.id===d.phase).name; $("item-title").textContent=d.title; $("item-help").textContent=d.help; const f=$("item-form"); f.elements.status.value=s.status; f.elements.owner.value=s.owner||d.owner; f.elements.due.value=s.due||""; f.elements.link.value=s.link||""; f.elements.notes.value=s.notes||""; $("item-dialog").showModal(); }
+  async function openItem(id) { const d=docs.find(x=>x.id===id), s=itemState(id); editingItem=id; $("item-phase").textContent=phases.find(p=>p.id===d.phase).name; $("item-title").textContent=d.title; $("item-help").textContent=d.help; const f=$("item-form"); f.elements.status.value=s.status; f.elements.owner.value=s.owner||d.owner; f.elements.due.value=s.due||""; f.elements.link.value=s.link||""; f.elements.notes.value=s.notes||""; $("attachment-status").textContent=""; $("item-dialog").showModal(); await renderAttachments(); }
   function saveItem() { const f=$("item-form"), p=current(); p.items[editingItem]={status:f.elements.status.value, owner:f.elements.owner.value.trim(), due:f.elements.due.value, link:f.elements.link.value.trim(), notes:f.elements.notes.value.trim(), updatedAt:new Date().toISOString()}; p.updatedAt=new Date().toISOString(); save(); render(); }
   function download(name, content, type="text/plain;charset=utf-8") { const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+  function sizeLabel(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024*1024) return `${(bytes/1024).toFixed(1)} KB`; return `${(bytes/1024/1024).toFixed(1)} MB`; }
+  async function renderAttachments() {
+    if (!editingItem || !current()) return;
+    try {
+      const files=await itemAttachments(current().id,editingItem);
+      $("attachment-list").innerHTML=files.length?files.map(file=>`<li><div><strong>${esc(file.name)}</strong><small>${esc(file.type||"未知格式")} · ${sizeLabel(file.size)} · ${esc(new Date(file.createdAt).toLocaleString("zh-TW"))}</small></div><div class="attachment-actions"><button class="download-attachment" data-file-id="${esc(file.id)}" type="button">下載</button><button class="remove-attachment" data-file-id="${esc(file.id)}" type="button">移除</button></div></li>`).join(""):`<li><small>尚未加入附件。你現有的 PDF 可直接放在對應文書項目裡。</small></li>`;
+    } catch (error) { $("attachment-list").innerHTML=`<li><small>${esc(error.message)}</small></li>`; }
+  }
+  async function addAttachmentFiles(fileList) {
+    const files=[...fileList]; if (!files.length) return;
+    const tooLarge=files.find(file=>file.size>MAX_FILE_SIZE); if (tooLarge) throw new Error(`${tooLarge.name} 超過 25 MB 上限`);
+    for (const file of files) await saveAttachment({id:`${current().id}:${editingItem}:${Date.now()}:${Math.random().toString(36).slice(2,7)}`,projectId:current().id,itemId:editingItem,name:file.name,type:file.type||"application/octet-stream",size:file.size,lastModified:file.lastModified,createdAt:new Date().toISOString(),blob:file});
+    $("attachment-status").textContent=`已加入 ${files.length} 個附件，檔案只保存在此瀏覽器。`;
+    await renderAttachments(); await renderDocs();
+  }
+  function draftHtml(id,title) { return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:"Microsoft JhengHei",sans-serif;max-width:800px;margin:40px auto;padding:0 24px;line-height:1.75;color:#17211e}pre{white-space:pre-wrap;font:inherit}h1{color:#12382f}@media print{body{margin:0;max-width:none}}</style></head><body><pre>${esc(draftText(id))}</pre></body></html>`; }
+  function printDraft(id,title) { const win=window.open("","_blank"); if (!win) return alert("瀏覽器已阻擋列印視窗，請允許此網站開啟新視窗後重試。"); win.document.open(); win.document.write(draftHtml(id,title)); win.document.close(); win.focus(); setTimeout(()=>win.print(),200); }
   function projectValue(key,label) { const v=current()?.[key]; return v || `【待確認：${label}】`; }
   function draftText(id) { const d=docs.find(x=>x.id===id), s=itemState(id); const common=`# ${d?.title || "工程文件"}\n\n> 草稿產生：${today()}；須改用機關／契約指定格式並人工核對。\n\n- 工程名稱：${projectValue("name","工程名稱")}\n- 主辦機關：${projectValue("agency","主辦機關")}\n- 標案／契約編號：${projectValue("caseNo","契約編號")}\n- 承辦／負責人：${s.owner || current().owner || "【待確認：負責人】"}\n- 文件日期：${today()}\n\n`;
     const bodies={
@@ -136,11 +195,13 @@
     $("status-filter").addEventListener("change",renderDocs);
     $("document-list").addEventListener("click",e=>{const b=e.target.closest(".edit-item");if(b)openItem(b.dataset.id);});
     $("item-form").addEventListener("submit",e=>{e.preventDefault();if(e.submitter?.value==="save"){saveItem();$("item-dialog").close();}else $("item-dialog").close();});
-    $("template-list").addEventListener("click",e=>{const b=e.target.closest(".draft");if(!b)return;const id=b.dataset.template,title=templates.find(t=>t[0]===id)[1];download(`${current().name}-${title}-${today()}.md`,draftText(id));});
+    $("template-list").addEventListener("click",e=>{const b=e.target.closest(".draft");if(!b)return;const id=b.dataset.template,title=templates.find(t=>t[0]===id)[1],base=`${current().name}-${title}-${today()}`;if(b.dataset.format==="doc")download(`${base}.doc`,"\ufeff"+draftHtml(id,title),"application/msword;charset=utf-8");else if(b.dataset.format==="print")printDraft(id,title);else download(`${base}.md`,draftText(id));});
     $("export-csv").addEventListener("click",exportCsv);
-    $("export-project").addEventListener("click",()=>download(`工程文書專案備份-${current().name}-${today()}.json`,JSON.stringify({version:1,exportedAt:new Date().toISOString(),project:current()},null,2),"application/json"));
-    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(data.version!==1||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;save();render();alert("備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
-    $("delete-project").addEventListener("click",()=>{if(Object.keys(projects).length<=1)return alert("至少保留一個專案；可新增空白專案後再刪除。");if(!confirm(`確定刪除「${current().name}」？請先備份，刪除後無法復原。`))return;delete projects[activeId];activeId=Object.keys(projects)[0];save();render();});
+    $("attachment-files").addEventListener("change",async e=>{try{await addAttachmentFiles(e.target.files);}catch(err){$("attachment-status").textContent=`無法加入：${err.message}`;}finally{e.target.value="";}});
+    $("attachment-list").addEventListener("click",async e=>{const b=e.target.closest("[data-file-id]");if(!b)return;const id=b.dataset.fileId;if(b.classList.contains("download-attachment")){const file=await getAttachment(id);if(file)download(file.name,file.blob,file.type);}else if(confirm("確定從此瀏覽器移除這個附件？原始檔不會被刪除。")){await deleteAttachment(id);await renderAttachments();await renderDocs();}});
+    $("export-project").addEventListener("click",async()=>{const manifest=(await projectAttachments(current().id).catch(()=>[])).map(({blob,...file})=>file);download(`工程文書專案備份-${current().name}-${today()}.json`,JSON.stringify({version:2,exportedAt:new Date().toISOString(),project:current(),attachmentManifest:manifest},null,2),"application/json")});
+    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;save();render();alert(data.attachmentManifest?.length?`專案已匯入；備份列有 ${data.attachmentManifest.length} 個附件，但檔案本體須另外加入。`:"備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
+    $("delete-project").addEventListener("click",async()=>{if(Object.keys(projects).length<=1)return alert("至少保留一個專案；可新增空白專案後再刪除。");if(!confirm(`確定刪除「${current().name}」及其本機附件？請先備份，刪除後無法復原。`))return;const removing=activeId;delete projects[activeId];activeId=Object.keys(projects)[0];save();await deleteProjectAttachments(removing).catch(()=>{});render();});
   }
   ensureProject(tenderData());
   bind();

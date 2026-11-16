@@ -1,0 +1,18 @@
+{
+  "name": "標案工務台｜公共工程文書中心",
+  "short_name": "標案工務台",
+  "description": "查詢政府標案，追蹤公共工程開工、施工、完工、驗收與保固文書。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f0e7",
+  "theme_color": "#12382f",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    {"src": "app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ],
+  "shortcuts": [
+    {"name": "找政府標案", "short_name": "找標案", "url": "./"},
+    {"name": "公共工程文書中心", "short_name": "工程文書", "url": "engineering.html"}
+  ]
+}
