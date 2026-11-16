@@ -26,12 +26,14 @@ for (const phase of phaseIds) assert(itemMatches.some((match) => match[1] === ph
 assert(templateMatches.length === 11, `草稿範本應為 11，實際 ${templateMatches.length}`);
 assert(/existing = Object\.values\(projects\)\.find/.test(js), "缺少標案帶入去重邏輯");
 assert(/twb\.engineeringProjects\.v1/.test(js), "缺少工程專案儲存鍵");
-assert(/備份 JSON/.test(html) && /匯入備份/.test(html) && /匯出清單 CSV/.test(html), "缺少備份或清單匯出入口");
+assert(/備份專案進度（JSON）/.test(html) && /匯入專案備份/.test(html) && /匯出清單 CSV/.test(html), "缺少備份或清單匯出入口");
 assert(/pcc\.gov\.tw/.test(html) && /law\.moj\.gov\.tw/.test(html), "缺少官方依據連結");
 assert(/engineering\.html\?tender=/.test(app), "案件工作台尚未串接工程文書中心");
 assert((index.match(/engineering\.html/g) || []).length >= 2, "首頁缺少工程文書中心入口");
 assert(/@media \(max-width: 700px\)/.test(css), "缺少手機版樣式");
 assert(/indexedDB\.open/.test(js) && /attachment-files/.test(html), "缺少本機多格式附件功能");
+assert(/\.xml,.tpa,.dwg,.dxf,.rvt,.ifc/.test(html), "缺少 PCCES、TPA、CAD 或 BIM 附件格式");
+assert(/JSON 只供本系統備份進度，不是公共工程正式文件/.test(html), "缺少 JSON 與正式工程文件的界線說明");
 assert(/application\/msword/.test(js) && /data-format="print"/.test(js), "缺少 Word 或列印 PDF 草稿輸出");
 assert(manifest.display === "standalone" && manifest.start_url === "./" && manifest.icons?.length, "PWA manifest 不完整");
 assert(/serviceWorker\.register/.test(pwa) && /addAll\(SHELL\)/.test(serviceWorker), "PWA 離線殼層未完成");

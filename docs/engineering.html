@@ -34,8 +34,8 @@
   <div class="wrap engineering-shell">
     <section class="project-panel" aria-labelledby="project-heading">
       <div class="section-heading"><div><p class="section-kicker">PROJECT</p><h2 id="project-heading">工程專案</h2></div><button id="new-project" class="btn secondary" type="button">＋ 新增專案</button></div>
-      <div class="project-picker"><label class="field">目前專案<select id="project-select"></select></label><div class="project-actions"><button id="export-project" class="btn secondary" type="button">備份 JSON</button><label class="btn secondary" for="import-project">匯入備份</label><input id="import-project" type="file" accept="application/json,.json" hidden><button id="delete-project" class="text-button danger-text" type="button">刪除專案</button></div></div>
-      <p class="storage-note">專案資料與附件都只存在此瀏覽器。JSON 備份包含附件清單但不含檔案本體；重要 PDF／Word／Excel 請另行保留原檔。</p>
+      <div class="project-picker"><label class="field">目前專案<select id="project-select"></select></label><div class="project-actions"><button id="export-project" class="btn secondary" type="button">備份專案進度（JSON）</button><label class="btn secondary" for="import-project">匯入專案備份</label><input id="import-project" type="file" accept="application/json,.json" hidden><button id="delete-project" class="text-button danger-text" type="button">刪除專案</button></div></div>
+      <p class="storage-note"><strong>JSON 只供本系統備份進度，不是公共工程正式文件。</strong> 正式文件仍保留 PDF、Word／ODT、Excel／ODS、PCCES XML、TPA、CAD／BIM 等原始格式。JSON 備份含附件清單但不含檔案本體。</p>
       <form id="project-form" class="project-form">
         <label class="field field-wide">工程名稱<input name="name" required maxlength="200"></label>
         <label class="field">主辦機關<input name="agency" maxlength="160"></label>
@@ -94,9 +94,9 @@
       <label class="field detail-field wide">紀錄、退補原因或待確認事項<textarea name="notes" rows="5" maxlength="10000"></textarea></label>
     </div>
     <section class="attachment-section" aria-labelledby="attachment-heading">
-      <div><h3 id="attachment-heading">本機附件</h3><p>支援 PDF、Word、Excel、圖片、文字與 ZIP；每個檔案上限 25 MB，不會上傳公開網站。</p></div>
+      <div><h3 id="attachment-heading">公共工程原始附件</h3><p>支援 PDF、Word／ODT、Excel／ODS、PCCES XML、TPA、DWG／DXF、RVT／IFC、圖片、文字與 ZIP；單檔上限 100 MB，不會上傳公開網站。</p></div>
       <label class="btn secondary" for="attachment-files">＋ 加入附件</label>
-      <input id="attachment-files" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.md,.zip,application/pdf,image/*" multiple hidden>
+      <input id="attachment-files" type="file" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.csv,.xml,.tpa,.dwg,.dxf,.rvt,.ifc,.jpg,.jpeg,.png,.webp,.txt,.md,.zip,application/pdf,image/*" multiple hidden>
       <div id="attachment-status" role="status"></div>
       <ul id="attachment-list" class="attachment-list"></ul>
     </section>

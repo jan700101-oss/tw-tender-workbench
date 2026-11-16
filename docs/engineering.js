@@ -3,7 +3,7 @@
   const STORAGE_KEY = "twb.engineeringProjects.v1";
   const FILE_DB = "twb-engineering-files-v1";
   const FILE_STORE = "attachments";
-  const MAX_FILE_SIZE = 25 * 1024 * 1024;
+  const MAX_FILE_SIZE = 100 * 1024 * 1024;
   const statuses = ["未開始", "準備中", "送審中", "退補", "已核定", "已完成", "不適用"];
   const phases = [
     { id: "prepare", name: "開工前", note: "先以契約、招標文件及監造要求建立送審總表；施工計畫、品質計畫、施工圖及檢驗文件的名稱與期限須逐案核對。" },
@@ -164,7 +164,7 @@
   }
   async function addAttachmentFiles(fileList) {
     const files=[...fileList]; if (!files.length) return;
-    const tooLarge=files.find(file=>file.size>MAX_FILE_SIZE); if (tooLarge) throw new Error(`${tooLarge.name} 超過 25 MB 上限`);
+    const tooLarge=files.find(file=>file.size>MAX_FILE_SIZE); if (tooLarge) throw new Error(`${tooLarge.name} 超過 100 MB 上限`);
     for (const file of files) await saveAttachment({id:`${current().id}:${editingItem}:${Date.now()}:${Math.random().toString(36).slice(2,7)}`,projectId:current().id,itemId:editingItem,name:file.name,type:file.type||"application/octet-stream",size:file.size,lastModified:file.lastModified,createdAt:new Date().toISOString(),blob:file});
     $("attachment-status").textContent=`已加入 ${files.length} 個附件，檔案只保存在此瀏覽器。`;
     await renderAttachments(); await renderDocs();
