@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 
-const [html, css, js, app, index, manifestText, pwa, serviceWorker] = await Promise.all([
+const [html, css, js, analysis, app, index, manifestText, pwa, serviceWorker] = await Promise.all([
   readFile("docs/engineering.html", "utf8"),
   readFile("docs/engineering.css", "utf8"),
   readFile("docs/engineering.js", "utf8"),
+  readFile("docs/engineering-analysis.js", "utf8"),
   readFile("docs/app.js", "utf8"),
   readFile("docs/index.html", "utf8"),
   readFile("docs/manifest.webmanifest", "utf8"),
@@ -35,9 +36,14 @@ assert(/indexedDB\.open/.test(js) && /attachment-files/.test(html), "缺少本�
 assert(/\.xml,.tpa,.dwg,.dxf,.rvt,.ifc/.test(html), "缺少 PCCES、TPA、CAD 或 BIM 附件格式");
 assert(/JSON 只供本系統備份進度，不是公共工程正式文件/.test(html), "缺少 JSON 與正式工程文件的界線說明");
 assert(/application\/msword/.test(js) && /data-format="print"/.test(js), "缺少 Word 或列印 PDF 草稿輸出");
+assert(/pdf-analysis-file/.test(html) && /pdf\.min\.mjs/.test(analysis), "缺少建築師 PDF 自動分析入口");
+assert(/施工前/.test(analysis) && /施工中/.test(analysis) && /完工／竣工/.test(analysis), "PDF 分析缺少施工前中後分類");
+assert(/source-page/.test(analysis) && /PDF 第/.test(analysis), "PDF 分析缺少來源頁碼");
+assert(/needsOcr/.test(analysis) && /不會上傳公開網站/.test(html), "PDF 分析缺少 OCR 與隱私界線");
+assert(/documentAnalysis/.test(js) && /version:3/.test(js), "專案備份未納入 PDF 分析結果");
 assert(manifest.display === "standalone" && manifest.start_url === "./" && manifest.icons?.length, "PWA manifest 不完整");
 assert(/serviceWorker\.register/.test(pwa) && /addAll\(SHELL\)/.test(serviceWorker), "PWA 離線殼層未完成");
-assert(![html, css, js, app, index, manifestText, pwa, serviceWorker].some((value) => value.includes("�")), "檔案含 U+FFFD 亂碼");
+assert(![html, css, js, analysis, app, index, manifestText, pwa, serviceWorker].some((value) => value.includes("�")), "檔案含 U+FFFD 亂碼");
 
 if (failures.length) {
   console.error(failures.map((message) => `- ${message}`).join("\n"));

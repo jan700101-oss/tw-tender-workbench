@@ -1,5 +1,5 @@
-const CACHE = "tender-workbench-20261117-opportunity-1";
-const SHELL = ["./", "index.html", "styles.css", "app.js", "engineering.html", "engineering.css", "engineering.js", "pwa.js", "manifest.webmanifest", "app-icon.svg"];
+const CACHE = "tender-workbench-20261117-pdf-analysis-1";
+const SHELL = ["./", "index.html", "styles.css", "app.js", "engineering.html", "engineering.css", "engineering.js", "engineering-analysis.js", "vendor/pdfjs/pdf.min.mjs", "vendor/pdfjs/pdf.worker.min.mjs", "pwa.js", "manifest.webmanifest", "app-icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

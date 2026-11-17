@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="app-icon.svg">
   <link rel="stylesheet" href="styles.css?v=20261116-engineering-1">
-  <link rel="stylesheet" href="engineering.css?v=20261117-files-1">
+  <link rel="stylesheet" href="engineering.css?v=20261117-pdf-analysis-1">
 </head>
 <body class="engineering-page">
 <a class="skip-link" href="#workflow">跳到工程流程</a>
@@ -50,6 +50,22 @@
         <label class="field field-wide">專案備註<textarea name="notes" rows="3" maxlength="10000"></textarea></label>
         <div class="form-actions"><button class="btn" type="submit">儲存專案資料</button><span id="save-status" role="status"></span></div>
       </form>
+    </section>
+
+    <section class="analysis-panel" aria-labelledby="analysis-heading">
+      <div class="section-heading analysis-heading">
+        <div><p class="section-kicker">PDF DOCUMENT INTAKE</p><h2 id="analysis-heading">建築師 PDF 自動整理</h2></div>
+        <span class="local-only-badge">只在此裝置分析</span>
+      </div>
+      <div id="pdf-drop-zone" class="pdf-drop-zone" tabindex="0" role="button" aria-describedby="pdf-analysis-help">
+        <div class="pdf-drop-icon" aria-hidden="true">PDF</div>
+        <div><strong>把建築師 PDF 丟到這裡</strong><p id="pdf-analysis-help">自動讀取工程名稱、圖號、工期、施工說明與風險，整理成施工前、施工中、完工／竣工三個階段。</p></div>
+        <label class="btn" for="pdf-analysis-file">選擇 PDF</label>
+        <input id="pdf-analysis-file" type="file" accept="application/pdf,.pdf" hidden>
+      </div>
+      <p class="analysis-privacy"><strong>文件不會上傳公開網站。</strong> PDF 解析、重點整理與保存都在目前瀏覽器內進行；掃描影像若沒有可選取文字，會標示需要 OCR，不會假裝已讀懂。</p>
+      <div id="pdf-analysis-status" class="analysis-status" role="status" aria-live="polite"></div>
+      <div id="pdf-analysis-result" class="analysis-result" hidden></div>
     </section>
 
     <section class="workflow-summary" aria-label="文書進度摘要">
@@ -104,7 +120,8 @@
   </form>
 </dialog>
 <footer class="site-footer"><div class="wrap footer-grid"><div><strong>公共工程文書中心</strong><p>把文件責任、期限與版本留在專案裡。</p></div><div class="footer-note"><p>資料只保存在目前瀏覽器；請定期匯出 JSON。未上傳到網站伺服器。</p></div></div></footer>
-<script src="engineering.js?v=20261117-files-1"></script>
+<script src="engineering.js?v=20261117-pdf-analysis-1"></script>
+<script type="module" src="engineering-analysis.js?v=20261117-pdf-analysis-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>
