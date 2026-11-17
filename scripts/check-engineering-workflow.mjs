@@ -37,6 +37,9 @@ assert(/\.xml,.tpa,.dwg,.dxf,.rvt,.ifc/.test(html), "缺少 PCCES、TPA、CAD �
 assert(/JSON 只供本系統備份進度，不是公共工程正式文件/.test(html), "缺少 JSON 與正式工程文件的界線說明");
 assert(/application\/msword/.test(js) && /data-format="print"/.test(js), "缺少 Word 或列印 PDF 草稿輸出");
 assert(/pdf-analysis-file/.test(html) && /pdf\.min\.mjs/.test(analysis), "缺少建築師 PDF 自動分析入口");
+assert(/PDF／DWG 圖說包自動整理/.test(html) && /multiple hidden/.test(html), "缺少 PDF／DWG 多檔圖說包入口");
+assert(/readDwgHeader/.test(analysis) && /classifyDwg/.test(analysis) && /AC1032/.test(analysis), "缺少 DWG 格式辨識與圖說分類");
+assert(/手機／瀏覽器不會假裝讀懂 DWG/.test(html), "缺少 DWG 瀏覽器解析限制說明");
 assert(/施工前/.test(analysis) && /施工中/.test(analysis) && /完工／竣工/.test(analysis), "PDF 分析缺少施工前中後分類");
 assert(/source-page/.test(analysis) && /PDF 第/.test(analysis), "PDF 分析缺少來源頁碼");
 assert(/needsOcr/.test(analysis) && /不會上傳公開網站/.test(html), "PDF 分析缺少 OCR 與隱私界線");

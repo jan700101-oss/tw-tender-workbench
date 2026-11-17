@@ -8,7 +8,7 @@ const ANALYSIS_KEY = "twb.engineeringPdfAnalyses.v1";
 const FILE_DB = "twb-engineering-files-v1";
 const FILE_STORE = "attachments";
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
-const ANALYZER_VERSION = 1;
+const ANALYZER_VERSION = 2;
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 
@@ -32,6 +32,20 @@ const phaseDefinitions = {
     suggestions: ["依實際施作更新竣工圖與數量結算", "彙整材料證明、試驗、查驗與施工照片索引", "完成功能測試、清潔、復原與移交清冊", "建立驗收缺失改善及保固追蹤資料"]
   }
 };
+
+const dwgFormatNames = {
+  AC1032: "AutoCAD 2018 格式系列",
+  AC1027: "AutoCAD 2013 格式系列",
+  AC1024: "AutoCAD 2010 格式系列",
+  AC1021: "AutoCAD 2007 格式系列"
+};
+const dwgRoles = [
+  {id:"demolition", pattern:/拆除|DEMO/i, title:"拆除圖", stages:["before","during"], note:"施工前核對拆除範圍、保留項目、斷水斷電與保護；施工中保存拆除前中後照片。"},
+  {id:"plan", pattern:/PLAN|平面|配置/i, title:"平面／配置圖", stages:["before","during"], note:"施工前完成現場丈量、放樣與尺寸疑義確認；施工中依最新核定版施作。"},
+  {id:"section", pattern:/SEC|剖面|立面/i, title:"剖面／介面圖", stages:["before","during"], note:"核對高程、收邊、管線與既有設施介面，隱蔽前辦理查驗。"},
+  {id:"detail", pattern:/詳圖|DETAIL/i, title:"施工詳圖／材料做法", stages:["before","during","after"], note:"施工前辦理材料與工法送審，施工中依詳圖查驗，完工時納入竣工圖與材料證明。"},
+  {id:"set", pattern:/出圖|全套|圖說/i, title:"完整出圖集", stages:["before","during","after"], note:"作為圖說總冊使用；開工前確認版本與圖號，變更後同步更新竣工版。"}
+];
 
 function activeProjectId() { return localStorage.getItem(ACTIVE_KEY) || ""; }
 function projectName(id = activeProjectId()) {
@@ -209,6 +223,52 @@ function buildAnalysis(file, pdf, metadata, pages) {
   result.missing = missingItems({...result, records});
   return result;
 }
+async function readDwgHeader(file) {
+  const signature = new TextDecoder("ascii").decode(await file.slice(0,6).arrayBuffer());
+  return {signature, valid:/^AC\d{4}$/.test(signature), format:dwgFormatNames[signature] || `DWG（${signature || "版本待確認"}）`};
+}
+function classifyDwg(name) {
+  return dwgRoles.find(role=>role.pattern.test(name)) || {
+    id:"drawing", title:"其他工程圖", stages:["before","during"],
+    note:"施工前確認圖名、圖號、版次及用途，施工中僅使用最新核定版。"
+  };
+}
+function deriveDwgProjectTitle(files) {
+  const names=files.map(file=>file.name.replace(/\.dwg$/i,"").replace(/(?:PLAN|SEC|拆除|詳圖|出圖|平面|剖面|配置|DETAIL).*$/i,"").trim()).filter(value=>value.length>=2);
+  if(!names.length)return projectName();
+  return names.sort((a,b)=>b.length-a.length)[0];
+}
+async function buildDwgAnalysis(files) {
+  const rows=[];
+  for(const file of files){
+    const header=await readDwgHeader(file), role=classifyDwg(file.name);
+    rows.push({fileName:file.name,fileSize:file.size,lastModified:file.lastModified,signature:header.signature,valid:header.valid,format:header.format,role:role.id,roleTitle:role.title,stages:role.stages,note:role.note});
+  }
+  const validCount=rows.filter(row=>row.valid).length;
+  const stages={before:[],during:[],after:[]};
+  for(const row of rows) for(const stage of row.stages) stages[stage].push({fileName:row.fileName,text:`${row.roleTitle}：${row.note}`});
+  return {
+    version:ANALYZER_VERSION, sourceType:"dwg-package", fileName:rows.length===1?rows[0].fileName:`${rows.length} 份 DWG 圖說`,
+    analyzedAt:new Date().toISOString(), documentKind:"DWG 工程圖說包（初步分類）", projectTitle:deriveDwgProjectTitle(files),
+    files:rows, pageCount:0, textCharacters:0, drawingIndex:[], duration:null, designer:"", stages,
+    facts:[
+      {label:"圖說包",text:`共 ${rows.length} 份 DWG；${validCount} 份通過檔頭辨識`,fileName:rows[0]?.fileName},
+      {label:"圖面分工",text:rows.map(row=>`${row.roleTitle}：${row.fileName}`).join("；"),fileName:rows[0]?.fileName},
+      {label:"DWG 版本",text:[...new Set(rows.map(row=>row.format))].join("、"),fileName:rows[0]?.fileName}
+    ],
+    risks:rows.filter(row=>!row.valid).map(row=>({fileName:row.fileName,text:"檔頭不是可辨識的 DWG 版本，請回原始 CAD 軟體檢查。"})),
+    missing:["手機／瀏覽器目前只辨識 DWG 檔頭、檔名角色與工程階段，尚未讀取圖內尺寸、文字、圖層及材料規範。","完整內容分析請同時放入建築師出圖 PDF；若只有 DWG，請在桌面版以 AutoCAD 解析後再核對。","開工前仍須人工確認圖號、版次、核定狀態及各檔案是否屬於同一工程。"],
+    needsOcr:false, browserLimited:true
+  };
+}
+function mergePdfAndDwg(pdfAnalysis,dwgAnalysis) {
+  const merged={...pdfAnalysis,sourceType:"mixed-package",documentKind:"PDF／DWG 工程圖說包",files:dwgAnalysis.files,browserLimited:true};
+  merged.fileName=`${pdfAnalysis.fileName} ＋ ${dwgAnalysis.files.length} 份 DWG`;
+  merged.facts=[...pdfAnalysis.facts,...dwgAnalysis.facts];
+  merged.missing=[...pdfAnalysis.missing,"DWG 內部圖元仍須由 AutoCAD 或原出圖 PDF 核對。"];
+  for(const stage of Object.keys(phaseDefinitions)) merged.stages[stage]=[...(pdfAnalysis.stages[stage]||[]),...(dwgAnalysis.stages[stage]||[])];
+  return merged;
+}
 function openFileDb() {
   return new Promise((resolve,reject) => {
     const request = indexedDB.open(FILE_DB,1);
@@ -220,88 +280,97 @@ function openFileDb() {
     request.onerror = () => reject(request.error || new Error("無法開啟本機附件資料庫"));
   });
 }
-async function storeSourceFile(projectId, file) {
+async function storeSourceFiles(projectId, files) {
   const db = await openFileDb();
   const existing = await new Promise((resolve,reject) => {
     const tx=db.transaction(FILE_STORE,"readonly"), request=tx.objectStore(FILE_STORE).index("projectId").getAll(projectId);
     request.onsuccess=()=>resolve(request.result || []); request.onerror=()=>reject(request.error);
   });
-  const old = existing.filter(item=>item.itemId==="pdf-analysis-source");
+  const old = existing.filter(item=>item.itemId==="pdf-analysis-source" || item.itemId==="drawing-analysis-source");
   await new Promise((resolve,reject) => {
     const tx=db.transaction(FILE_STORE,"readwrite"), store=tx.objectStore(FILE_STORE);
     old.forEach(item=>store.delete(item.id));
-    store.put({id:`${projectId}:pdf-analysis-source:${Date.now()}`,projectId,itemId:"pdf-analysis-source",name:file.name,type:file.type||"application/pdf",size:file.size,lastModified:file.lastModified,createdAt:new Date().toISOString(),blob:file});
+    files.forEach((file,index)=>store.put({id:`${projectId}:drawing-analysis-source:${Date.now()}:${index}`,projectId,itemId:"drawing-analysis-source",name:file.name,type:file.type||(/\.dwg$/i.test(file.name)?"application/acad":"application/pdf"),size:file.size,lastModified:file.lastModified,createdAt:new Date().toISOString(),blob:file}));
     tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
   });
 }
 function setStatus(message, error=false) { const el=$("pdf-analysis-status"); el.textContent=message; el.classList.toggle("error",error); }
-function renderSource(row) { return `${esc(row.text)} <span class="source-page">PDF 第 ${row.page} 頁</span>`; }
+function renderSource(row) { return `${esc(row.text)} <span class="source-page">${row.page?`PDF 第 ${row.page} 頁`:`DWG：${esc(row.fileName||"來源檔")}`}</span>`; }
 function renderAnalysis(analysis) {
   const result=$("pdf-analysis-result");
-  if (!analysis) { result.hidden=true; result.innerHTML=""; setStatus("尚未分析 PDF。"); return; }
+  if (!analysis) { result.hidden=true; result.innerHTML=""; setStatus("尚未分析 PDF／DWG 圖說。"); return; }
   const stages = Object.entries(phaseDefinitions).map(([id,definition]) => {
     const cited=(analysis.stages?.[id]||[]).map(row=>`<li>${renderSource(row)}</li>`).join("");
     const suggestions=definition.suggestions.map(text=>`<li class="suggestion">${esc(text)}</li>`).join("");
-    return `<article class="analysis-stage"><header><h4>${esc(definition.title)}</h4><button type="button" data-analysis-phase="${esc(definition.target)}">開啟清單 →</button></header><ul>${cited||'<li class="suggestion">PDF 未辨識到明確條文，請人工查看圖說。</li>'}${suggestions}</ul></article>`;
+    return `<article class="analysis-stage"><header><h4>${esc(definition.title)}</h4><button type="button" data-analysis-phase="${esc(definition.target)}">開啟清單 →</button></header><ul>${cited||'<li class="suggestion">圖說未辨識到明確內容，請人工查看原檔。</li>'}${suggestions}</ul></article>`;
   }).join("");
-  const facts=(analysis.facts||[]).map(fact=>`<li><b>${esc(fact.label)}：</b>${esc(fact.text)} <span class="source-page">PDF 第 ${fact.page} 頁</span></li>`).join("");
+  const facts=(analysis.facts||[]).map(fact=>`<li><b>${esc(fact.label)}：</b>${esc(fact.text)} ${fact.page||fact.fileName?`<span class="source-page">${fact.page?`PDF 第 ${fact.page} 頁`:`DWG：${esc(fact.fileName)}`}</span>`:""}</li>`).join("");
   const risks=(analysis.risks||[]).map(renderSource).map(text=>`<li>${text}</li>`).join("") || "<li>未辨識到明確風險條文，仍須人工核對契約與施工規範。</li>";
   const missing=(analysis.missing||[]).map(text=>`<li>${esc(text)}</li>`).join("") || "<li>目前沒有明顯缺漏提示；仍須人工核對原圖及契約。</li>";
   result.innerHTML=`
     <div class="analysis-result-head"><div><span class="section-kicker">ANALYSIS RESULT</span><h3>${esc(analysis.projectTitle||analysis.fileName)}</h3><p>${esc(analysis.fileName)} · ${esc(new Date(analysis.analyzedAt).toLocaleString("zh-TW"))}</p></div><div class="analysis-actions"><button class="btn" id="apply-pdf-analysis" type="button">套用到目前專案</button><button class="btn secondary" id="download-pdf-analysis" type="button">下載重點摘要</button></div></div>
-    <div class="analysis-metrics"><article><span>文件類型</span><strong>${esc(analysis.documentKind)}</strong></article><article><span>頁數</span><strong>${analysis.pageCount} 頁</strong></article><article><span>圖號</span><strong>${analysis.drawingIndex?.length||0} 個</strong></article><article><span>工期</span><strong>${esc(analysis.duration?.value||"待確認")}</strong></article></div>
-    ${analysis.needsOcr?'<p class="analysis-warning danger"><strong>需要 OCR：</strong>這份 PDF 幾乎沒有可抽取文字，目前只能辨識頁數與檔案資訊；請提供可搜尋文字版，或之後啟用 OCR 再分析。</p>':'<p class="analysis-warning"><strong>初步自動整理：</strong>這不是設計審查或契約判讀。所有內容保留 PDF 頁碼，施工前須由工地主任／監造逐項核對原圖。</p>'}
+    <div class="analysis-metrics"><article><span>文件類型</span><strong>${esc(analysis.documentKind)}</strong></article><article><span>${analysis.files?.length?"DWG 檔案":"頁數"}</span><strong>${analysis.files?.length?`${analysis.files.length} 份`:`${analysis.pageCount} 頁`}</strong></article><article><span>圖號</span><strong>${analysis.drawingIndex?.length||0} 個</strong></article><article><span>工期</span><strong>${esc(analysis.duration?.value||"待確認")}</strong></article></div>
+    ${analysis.needsOcr?'<p class="analysis-warning danger"><strong>需要 OCR：</strong>這份 PDF 幾乎沒有可抽取文字，目前只能辨識頁數與檔案資訊；請提供可搜尋文字版，或之後啟用 OCR 再分析。</p>':analysis.browserLimited?'<p class="analysis-warning danger"><strong>DWG 初步分類：</strong>瀏覽器已驗證檔案格式並依檔名分工，但沒有讀取 CAD 內部尺寸、文字與圖層。完整分析請加入出圖 PDF，或回桌面版用 AutoCAD 解析。</p>':'<p class="analysis-warning"><strong>初步自動整理：</strong>這不是設計審查或契約判讀。所有內容保留 PDF 頁碼，施工前須由工地主任／監造逐項核對原圖。</p>'}
     <ul class="analysis-facts">${facts||'<li>目前沒有可靠的文件明載重點。</li>'}</ul>
     <div class="analysis-stages">${stages}</div>
     <div class="analysis-lists"><section class="analysis-list"><h4>風險與注意事項</h4><ul>${risks}</ul></section><section class="analysis-list"><h4>待確認／缺少資料</h4><ul>${missing}</ul></section></div>`;
   result.hidden=false;
-  setStatus(`已完成 ${analysis.pageCount} 頁分析；辨識 ${analysis.textCharacters.toLocaleString()} 個文字。`);
+  setStatus(analysis.files?.length?`已整理 ${analysis.files.length} 份 DWG${analysis.pageCount?`，並分析 PDF ${analysis.pageCount} 頁`:""}；原始檔只存在此裝置。`:`已完成 ${analysis.pageCount} 頁分析；辨識 ${analysis.textCharacters.toLocaleString()} 個文字。`);
 }
 function analysisMarkdown(analysis) {
-  const rows=[`# ${analysis.projectTitle||analysis.fileName} - PDF 重點整理`,``,`> 來源：${analysis.fileName}；分析時間：${analysis.analyzedAt}；所有內容須回原 PDF 與契約人工核對。`,``,`- 文件類型：${analysis.documentKind}`,
-    `- 頁數：${analysis.pageCount}` ,`- 工期：${analysis.duration?.value||"待確認"}`,`- 設計／建築師：${analysis.designer||"待確認"}`,`- 圖號：${analysis.drawingIndex?.map(item=>item.code).join("、")||"待確認"}`,``,`## 文件明載重點`];
-  for(const fact of analysis.facts||[]) rows.push(`- ${fact.label}：${fact.text}（PDF 第 ${fact.page} 頁）`);
-  for(const [id,definition] of Object.entries(phaseDefinitions)) { rows.push(``,`## ${definition.title}`); for(const row of analysis.stages?.[id]||[]) rows.push(`- ${row.text}（PDF 第 ${row.page} 頁）`); rows.push(...definition.suggestions.map(text=>`- 【流程建議，待核對】${text}`)); }
-  rows.push(``,`## 風險與注意事項`,...(analysis.risks||[]).map(row=>`- ${row.text}（PDF 第 ${row.page} 頁）`),``,`## 待確認／缺少資料`,...(analysis.missing||[]).map(text=>`- ${text}`));
+  const sourceLabel=row=>row.page?`PDF 第 ${row.page} 頁`:`DWG：${row.fileName||"來源檔"}`;
+  const rows=[`# ${analysis.projectTitle||analysis.fileName} - 圖說重點整理`,``,`> 來源：${analysis.fileName}；分析時間：${analysis.analyzedAt}；所有內容須回原圖、契約與監造核定資料人工核對。`,``,`- 文件類型：${analysis.documentKind}`,
+    `- PDF 頁數：${analysis.pageCount||0}`,`- DWG 檔案：${analysis.files?.length||0}`,`- 工期：${analysis.duration?.value||"待確認"}`,`- 設計／建築師：${analysis.designer||"待確認"}`,`- 圖號：${analysis.drawingIndex?.map(item=>item.code).join("、")||"待確認"}`,``,`## 文件明載／檔案辨識重點`];
+  for(const fact of analysis.facts||[]) rows.push(`- ${fact.label}：${fact.text}${fact.page||fact.fileName?`（${sourceLabel(fact)}）`:""}`);
+  for(const [id,definition] of Object.entries(phaseDefinitions)) { rows.push(``,`## ${definition.title}`); for(const row of analysis.stages?.[id]||[]) rows.push(`- ${row.text}（${sourceLabel(row)}）`); rows.push(...definition.suggestions.map(text=>`- 【流程建議，待核對】${text}`)); }
+  rows.push(``,`## 風險與注意事項`,...(analysis.risks||[]).map(row=>`- ${row.text}（${sourceLabel(row)}）`),``,`## 待確認／缺少資料`,...(analysis.missing||[]).map(text=>`- ${text}`));
   return rows.join("\n");
 }
 function download(name,content) { const url=URL.createObjectURL(new Blob([content],{type:"text/markdown;charset=utf-8"})); const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
-async function analyzeFile(file) {
+async function analyzePdf(file) {
+  const loading=pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false});
+  const pdf=await loading.promise, metadata=await pdf.getMetadata().catch(()=>({info:{}})), pages=[];
+  for(let number=1;number<=pdf.numPages;number++){
+    setStatus(`正在分析 PDF 第 ${number}／${pdf.numPages} 頁…`);
+    const page=await pdf.getPage(number), content=await page.getTextContent({includeMarkedContent:false}), lines=textLines(content.items), sequential=normalize(content.items.map(item=>item.str||"").join(" "));
+    pages.push({page:number,lines,text:lines.join("\n"),sequential});
+  }
+  return buildAnalysis(file,pdf,metadata,pages);
+}
+async function analyzeFiles(fileList) {
   const projectId=activeProjectId();
   if (!projectId) return setStatus("請先建立工程專案。",true);
-  if (!file || (file.type!=="application/pdf" && !/\.pdf$/i.test(file.name))) return setStatus("請選擇 PDF 檔。",true);
-  if (file.size>MAX_FILE_SIZE) return setStatus(`${file.name} 超過 100 MB 上限。`,true);
-  setStatus(`正在讀取 ${file.name}…`);
+  const files=[...fileList], pdfs=files.filter(file=>/\.pdf$/i.test(file.name)||file.type==="application/pdf"), dwgs=files.filter(file=>/\.dwg$/i.test(file.name));
+  if (!files.length || files.length!==pdfs.length+dwgs.length) return setStatus("目前圖說分析只接受 PDF 與 DWG 檔。",true);
+  if (pdfs.length>1) return setStatus("一次可放 1 份出圖 PDF，並可同時加入多份 DWG。",true);
+  const tooLarge=files.find(file=>file.size>MAX_FILE_SIZE);
+  if (tooLarge) return setStatus(`${tooLarge.name} 超過單檔 100 MB 上限。`,true);
+  setStatus(`正在讀取 ${files.length} 份圖說…`);
   try {
-    const loading=pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false});
-    const pdf=await loading.promise, metadata=await pdf.getMetadata().catch(()=>({info:{}})), pages=[];
-    for(let number=1;number<=pdf.numPages;number++){
-      setStatus(`正在分析第 ${number}／${pdf.numPages} 頁…`);
-      const page=await pdf.getPage(number), content=await page.getTextContent({includeMarkedContent:false}), lines=textLines(content.items), sequential=normalize(content.items.map(item=>item.str||"").join(" "));
-      pages.push({page:number,lines,text:lines.join("\n"),sequential});
-    }
-    const analysis=buildAnalysis(file,pdf,metadata,pages);
-    await storeSourceFile(projectId,file);
+    const pdfAnalysis=pdfs.length?await analyzePdf(pdfs[0]):null;
+    const dwgAnalysis=dwgs.length?await buildDwgAnalysis(dwgs):null;
+    const analysis=pdfAnalysis&&dwgAnalysis?mergePdfAndDwg(pdfAnalysis,dwgAnalysis):(pdfAnalysis||dwgAnalysis);
+    await storeSourceFiles(projectId,files);
     saveAnalysis(projectId,analysis);
     renderAnalysis(analysis);
   } catch(error) {
     console.error(error);
-    setStatus(`分析失敗：${error?.message||"無法讀取 PDF"}`,true);
+    setStatus(`分析失敗：${error?.message||"無法讀取圖說"}`,true);
   }
 }
 function bind() {
   const zone=$("pdf-drop-zone"), input=$("pdf-analysis-file"), result=$("pdf-analysis-result");
   zone.addEventListener("click",event=>{if(!event.target.closest("label"))input.click();});
   zone.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();input.click();}});
-  input.addEventListener("change",()=>{const [file]=input.files; if(file)analyzeFile(file); input.value="";});
+  input.addEventListener("change",()=>{if(input.files.length)analyzeFiles(input.files); input.value="";});
   for(const eventName of ["dragenter","dragover"]) zone.addEventListener(eventName,event=>{event.preventDefault();zone.classList.add("dragging");});
   for(const eventName of ["dragleave","drop"]) zone.addEventListener(eventName,event=>{event.preventDefault();zone.classList.remove("dragging");});
-  zone.addEventListener("drop",event=>{const [file]=event.dataTransfer.files;if(file)analyzeFile(file);});
+  zone.addEventListener("drop",event=>{if(event.dataTransfer.files.length)analyzeFiles(event.dataTransfer.files);});
   result.addEventListener("click",event=>{
     const analysis=loadAnalyses()[activeProjectId()];
     if(!analysis)return;
     if(event.target.id==="apply-pdf-analysis") window.dispatchEvent(new CustomEvent("engineering-analysis-apply",{detail:{projectId:activeProjectId(),analysis}}));
-    if(event.target.id==="download-pdf-analysis") download(`PDF重點-${analysis.projectTitle||projectName()}-${new Date().toISOString().slice(0,10)}.md`,analysisMarkdown(analysis));
+    if(event.target.id==="download-pdf-analysis") download(`圖說重點-${analysis.projectTitle||projectName()}-${new Date().toISOString().slice(0,10)}.md`,analysisMarkdown(analysis));
     const phase=event.target.closest("[data-analysis-phase]")?.dataset.analysisPhase;
     if(phase) window.dispatchEvent(new CustomEvent("engineering-analysis-phase",{detail:{phase}}));
   });

@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="app-icon.svg">
   <link rel="stylesheet" href="styles.css?v=20261116-engineering-1">
-  <link rel="stylesheet" href="engineering.css?v=20261117-pdf-analysis-1">
+  <link rel="stylesheet" href="engineering.css?v=20261117-drawing-package-1">
 </head>
 <body class="engineering-page">
 <a class="skip-link" href="#workflow">跳到工程流程</a>
@@ -54,16 +54,16 @@
 
     <section class="analysis-panel" aria-labelledby="analysis-heading">
       <div class="section-heading analysis-heading">
-        <div><p class="section-kicker">PDF DOCUMENT INTAKE</p><h2 id="analysis-heading">建築師 PDF 自動整理</h2></div>
+        <div><p class="section-kicker">PDF / DWG DOCUMENT INTAKE</p><h2 id="analysis-heading">PDF／DWG 圖說包自動整理</h2></div>
         <span class="local-only-badge">只在此裝置分析</span>
       </div>
       <div id="pdf-drop-zone" class="pdf-drop-zone" tabindex="0" role="button" aria-describedby="pdf-analysis-help">
-        <div class="pdf-drop-icon" aria-hidden="true">PDF</div>
-        <div><strong>把建築師 PDF 丟到這裡</strong><p id="pdf-analysis-help">自動讀取工程名稱、圖號、工期、施工說明與風險，整理成施工前、施工中、完工／竣工三個階段。</p></div>
-        <label class="btn" for="pdf-analysis-file">選擇 PDF</label>
-        <input id="pdf-analysis-file" type="file" accept="application/pdf,.pdf" hidden>
+        <div class="pdf-drop-icon" aria-hidden="true">圖說</div>
+        <div><strong>把建築師 PDF 或整包 DWG 丟到這裡</strong><p id="pdf-analysis-help">PDF 會讀取頁面文字與來源頁碼；多份 DWG 會依檔名與版本辨識平面、剖面、拆除、詳圖，整理到施工前、中、完工／竣工。</p></div>
+        <label class="btn" for="pdf-analysis-file">選擇 PDF／DWG</label>
+        <input id="pdf-analysis-file" type="file" accept="application/pdf,.pdf,application/acad,application/x-acad,.dwg" multiple hidden>
       </div>
-      <p class="analysis-privacy"><strong>文件不會上傳公開網站。</strong> PDF 解析、重點整理與保存都在目前瀏覽器內進行；掃描影像若沒有可選取文字，會標示需要 OCR，不會假裝已讀懂。</p>
+      <p class="analysis-privacy"><strong>文件不會上傳公開網站。</strong> PDF 解析、DWG 檔頭辨識、初步分類與保存都在目前瀏覽器內進行。手機／瀏覽器不會假裝讀懂 DWG 內部圖元、尺寸及文字；要做完整內容分析，請另附建築師出圖 PDF 或在桌面版使用 AutoCAD 解析。</p>
       <div id="pdf-analysis-status" class="analysis-status" role="status" aria-live="polite"></div>
       <div id="pdf-analysis-result" class="analysis-result" hidden></div>
     </section>
@@ -120,8 +120,8 @@
   </form>
 </dialog>
 <footer class="site-footer"><div class="wrap footer-grid"><div><strong>公共工程文書中心</strong><p>把文件責任、期限與版本留在專案裡。</p></div><div class="footer-note"><p>資料只保存在目前瀏覽器；請定期匯出 JSON。未上傳到網站伺服器。</p></div></div></footer>
-<script src="engineering.js?v=20261117-pdf-analysis-1"></script>
-<script type="module" src="engineering-analysis.js?v=20261117-pdf-analysis-1"></script>
+<script src="engineering.js?v=20261117-drawing-package-1"></script>
+<script type="module" src="engineering-analysis.js?v=20261117-drawing-package-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>
