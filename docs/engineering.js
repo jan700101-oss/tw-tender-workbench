@@ -79,6 +79,7 @@
     ["precheck","竣工文件總表","盤點初驗／驗收前應備卷宗"], ["defect-correction","缺失改善回覆","逐項對照缺失與改善證據"],
     ["repair-record","保固維修紀錄","保存通知、會勘、修繕與確認結果"]
   ];
+  const analysisPackageItems = new Set(["contract","site-handover","construction-plan","quality-plan","safety-plan","baseline-schedule","shopdrawings-plan","start-conditions","kickoff","daily-log","photo-record","self-inspection","inspection-request","material-submittal","test-report","shopdrawings","rfi","completion-check","asbuilt","precheck"]);
 
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -187,6 +188,26 @@
       "repair-record":"## 保固維修紀錄\n\n- 通知／發現日期：【待確認】\n- 缺失位置與狀況：【待確認】\n- 會勘與責任判定：【待確認】\n- 修繕方式、材料及人員：【待確認】\n- 修繕日期：【待確認】\n- 改善前後照片：【待確認】\n- 使用單位／機關確認：【待確認】"
     }; return common+(bodies[id]||"## 內容\n\n【待確認】")+"\n\n## 內部紀錄\n\n"+(s.notes||"【待確認】")+"\n"; }
   function exportCsv() { const rows=[["階段","文件","必備性","預設責任","目前責任","狀態","期限","逾期","連結","備註"],...docs.map(d=>{const s=itemState(d.id);return[phases.find(p=>p.id===d.phase).name,d.title,d.required?"常用必備":"視個案",d.owner,s.owner||"",s.status,s.due||"",isOverdue(s)?"是":"否",s.link||"",s.notes||""];})]; const csv="\ufeff"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n"); download(`工程文書清單-${current().name}-${today()}.csv`,csv,"text/csv;charset=utf-8"); }
+  function applyDocumentAnalysis(analysis,{buildPackage=false}={}) {
+    const p=current();
+    if(!p||!analysis)return;
+    const marker=`[圖說分析：${analysis.fileName}]`;
+    if((!p.name||p.name==="待命名工程")&&analysis.projectTitle)p.name=analysis.projectTitle;
+    if(!p.notes.includes(marker)){
+      const source=analysis.files?.length?`${analysis.files.length} 份 DWG${analysis.pageCount?`及 PDF ${analysis.pageCount} 頁`:""}`:`PDF ${analysis.pageCount} 頁`;
+      p.notes=`${p.notes?`${p.notes}\n`:""}${marker}\n${analysis.duration?.value?`辨識工期：${analysis.duration.value}（PDF 第 ${analysis.duration.page} 頁）\n`:""}文件類型：${analysis.documentKind}；來源：${source}。`;
+    }
+    if(buildPackage){
+      const packageNote=`[${today()} 圖說資料包自動建檔] 已建立初稿，內容與期限待依契約、機關表單及核定圖說確認。`;
+      for(const id of analysisPackageItems){
+        const previous=p.items[id]||{status:"未開始",owner:"",due:"",link:"",notes:""};
+        p.items[id]={...previous,status:previous.status==="未開始"?"準備中":previous.status,notes:previous.notes.includes("圖說資料包自動建檔")?previous.notes:`${previous.notes?`${previous.notes}\n`:""}${packageNote}`,updatedAt:new Date().toISOString()};
+      }
+      p.packageGeneratedAt=new Date().toISOString();
+    }
+    p.updatedAt=new Date().toISOString();save();render();
+    $("save-status").textContent=buildPackage?"已建立工程資料包與文書追蹤初稿；待確認項目不會被標成完成。":"圖說重點已帶入工程名稱與專案備註；原圖仍須人工核對。";
+  }
   function bind() {
     $("project-select").addEventListener("change",e=>{activeId=e.target.value;save();render();});
     $("new-project").addEventListener("click",()=>{const p=baseProject();projects[p.id]=p;activeId=p.id;save();render();$("project-form").elements.name.focus();});
@@ -198,7 +219,8 @@
     $("template-list").addEventListener("click",e=>{const b=e.target.closest(".draft");if(!b)return;const id=b.dataset.template,title=templates.find(t=>t[0]===id)[1],base=`${current().name}-${title}-${today()}`;if(b.dataset.format==="doc")download(`${base}.doc`,"\ufeff"+draftHtml(id,title),"application/msword;charset=utf-8");else if(b.dataset.format==="print")printDraft(id,title);else download(`${base}.md`,draftText(id));});
     $("export-csv").addEventListener("click",exportCsv);
     window.addEventListener("engineering-analysis-phase",e=>{const phase=e.detail?.phase;if(!phases.some(item=>item.id===phase))return;activePhase=phase;renderNav();renderDocs();$("workflow").scrollIntoView({behavior:"smooth",block:"start"});});
-    window.addEventListener("engineering-analysis-apply",e=>{const detail=e.detail||{},p=current(),analysis=detail.analysis;if(!p||detail.projectId!==p.id||!analysis)return;const marker=`[圖說分析：${analysis.fileName}]`;if((!p.name||p.name==="待命名工程")&&analysis.projectTitle)p.name=analysis.projectTitle;if(!p.notes.includes(marker)){const source=analysis.files?.length?`${analysis.files.length} 份 DWG${analysis.pageCount?`及 PDF ${analysis.pageCount} 頁`:""}`:`PDF ${analysis.pageCount} 頁`;p.notes=`${p.notes?`${p.notes}\n`:""}${marker}\n${analysis.duration?.value?`辨識工期：${analysis.duration.value}（PDF 第 ${analysis.duration.page} 頁）\n`:""}文件類型：${analysis.documentKind}；來源：${source}。`;}p.updatedAt=new Date().toISOString();save();render();$("save-status").textContent="圖說重點已帶入工程名稱與專案備註；原圖仍須人工核對。";});
+    window.addEventListener("engineering-analysis-apply",e=>{const detail=e.detail||{};if(detail.projectId===current()?.id)applyDocumentAnalysis(detail.analysis);});
+    window.addEventListener("engineering-analysis-build-package",e=>{const detail=e.detail||{};if(detail.projectId===current()?.id)applyDocumentAnalysis(detail.analysis,{buildPackage:true});});
     $("attachment-files").addEventListener("change",async e=>{try{await addAttachmentFiles(e.target.files);}catch(err){$("attachment-status").textContent=`無法加入：${err.message}`;}finally{e.target.value="";}});
     $("attachment-list").addEventListener("click",async e=>{const b=e.target.closest("[data-file-id]");if(!b)return;const id=b.dataset.fileId;if(b.classList.contains("download-attachment")){const file=await getAttachment(id);if(file)download(file.name,file.blob,file.type);}else if(confirm("確定從此瀏覽器移除這個附件？原始檔不會被刪除。")){await deleteAttachment(id);await renderAttachments();await renderDocs();}});
     $("export-project").addEventListener("click",async()=>{const manifest=(await projectAttachments(current().id).catch(()=>[])).map(({blob,...file})=>file),documentAnalysis=window.EngineeringPdfAnalysis?.getCurrentAnalysis?.()||null;download(`工程文書專案備份-${current().name}-${today()}.json`,JSON.stringify({version:3,exportedAt:new Date().toISOString(),project:current(),documentAnalysis,attachmentManifest:manifest},null,2),"application/json")});
@@ -208,4 +230,8 @@
   ensureProject(tenderData());
   bind();
   render();
+  window.EngineeringWorkbench={
+    getCurrentProject:()=>JSON.parse(JSON.stringify(current()||{})),
+    getDocumentCatalog:()=>docs.map(doc=>({...doc,phaseName:phases.find(phase=>phase.id===doc.phase)?.name||doc.phase,state:{...itemState(doc.id)}}))
+  };
 })();

@@ -33,6 +33,7 @@
 .pdf-drop-zone strong { display: block; color: var(--forest); font-size: 1.05rem; }
 .pdf-drop-zone p { margin: 5px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.55; }
 .analysis-privacy { margin: 12px 2px 0; color: var(--muted); font-size: .76rem; line-height: 1.6; }
+.analysis-one-click-guide { margin: 10px 0 0; border-radius: 10px; padding: 11px 13px; background: #e8f4ed; color: var(--forest); font-size: .8rem; line-height: 1.55; }
 .analysis-status { min-height: 1.4em; margin-top: 10px; color: var(--forest-2); font-size: .82rem; font-weight: 800; }
 .analysis-status.error { color: var(--danger); }
 .analysis-result { margin-top: 20px; }

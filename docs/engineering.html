@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="app-icon.svg">
   <link rel="stylesheet" href="styles.css?v=20261116-engineering-1">
-  <link rel="stylesheet" href="engineering.css?v=20261117-drawing-package-1">
+  <link rel="stylesheet" href="engineering.css?v=20261117-one-click-pack-1">
 </head>
 <body class="engineering-page">
 <a class="skip-link" href="#workflow">跳到工程流程</a>
@@ -64,6 +64,7 @@
         <input id="pdf-analysis-file" type="file" accept="application/pdf,.pdf,application/acad,application/x-acad,.dwg" multiple hidden>
       </div>
       <p class="analysis-privacy"><strong>文件不會上傳公開網站。</strong> PDF 解析、DWG 檔頭辨識、初步分類與保存都在目前瀏覽器內進行。手機／瀏覽器不會假裝讀懂 DWG 內部圖元、尺寸及文字；要做完整內容分析，請另附建築師出圖 PDF 或在桌面版使用 AutoCAD 解析。</p>
+      <p class="analysis-one-click-guide"><strong>一鍵完成：</strong>分析後按「一鍵建立並列印」，系統會建立文書追蹤、圖說目錄、施工前中後重點、缺漏清單及列印封面；有出圖 PDF 時，資料包會提供原圖列印連結，保留圖面線條與原尺寸比例。</p>
       <div id="pdf-analysis-status" class="analysis-status" role="status" aria-live="polite"></div>
       <div id="pdf-analysis-result" class="analysis-result" hidden></div>
     </section>
@@ -120,8 +121,8 @@
   </form>
 </dialog>
 <footer class="site-footer"><div class="wrap footer-grid"><div><strong>公共工程文書中心</strong><p>把文件責任、期限與版本留在專案裡。</p></div><div class="footer-note"><p>資料只保存在目前瀏覽器；請定期匯出 JSON。未上傳到網站伺服器。</p></div></div></footer>
-<script src="engineering.js?v=20261117-drawing-package-1"></script>
-<script type="module" src="engineering-analysis.js?v=20261117-drawing-package-1"></script>
+<script src="engineering.js?v=20261117-one-click-pack-1"></script>
+<script type="module" src="engineering-analysis.js?v=20261117-one-click-pack-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>

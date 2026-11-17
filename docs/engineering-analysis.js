@@ -294,6 +294,62 @@ async function storeSourceFiles(projectId, files) {
     tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
   });
 }
+async function storedSourceFiles(projectId) {
+  const db=await openFileDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(FILE_STORE,"readonly"), request=tx.objectStore(FILE_STORE).index("projectId").getAll(projectId);
+    request.onsuccess=()=>resolve((request.result||[]).filter(item=>item.itemId==="drawing-analysis-source"||item.itemId==="pdf-analysis-source"));
+    request.onerror=()=>reject(request.error||new Error("無法讀取圖說附件"));
+  });
+}
+async function sourcePdfForPrint(projectId) {
+  const sources=await storedSourceFiles(projectId), source=sources.find(item=>/\.pdf$/i.test(item.name)||item.type==="application/pdf");
+  return source||null;
+}
+function packageSourceLabel(row){return row?.page?`PDF 第 ${row.page} 頁`:`DWG：${row?.fileName||"待確認"}`;}
+function packageHtml(analysis,project,catalog,sourcePdfUrl="") {
+  const value=(key,label)=>esc(project?.[key]||`【待確認：${label}】`), date=new Date().toLocaleString("zh-TW"), phaseOrder=["開工前","開工","施工","估驗變更","完工","竣工驗收","保固"];
+  const drawings=[];
+  for(const item of analysis.drawingIndex||[])drawings.push(`<tr><td>${esc(item.code)}</td><td>${esc(item.title||"圖名待確認")}</td><td>PDF 第 ${item.page} 頁</td><td>版次／核定狀態待確認</td></tr>`);
+  for(const item of analysis.files||[])drawings.push(`<tr><td>${esc(item.roleTitle||"DWG")}</td><td>${esc(item.fileName)}</td><td>${esc(item.format||"DWG")}</td><td>${item.valid?"檔頭已辨識；版次待確認":"檔案格式待確認"}</td></tr>`);
+  const documentSections=phaseOrder.map(phase=>{
+    const rows=catalog.filter(item=>item.phaseName===phase).map(item=>`<tr><td>□</td><td>${esc(item.title)}</td><td>${esc(item.state?.status||"未開始")}</td><td>${esc(item.state?.owner||item.owner||"待確認")}</td><td>${esc(item.state?.due||"待設定")}</td><td>${esc(item.required?"常用必備":"視個案")}</td></tr>`).join("");
+    return `<h3>${esc(phase)}文書</h3><table><thead><tr><th>完成</th><th>文件</th><th>目前狀態</th><th>負責人</th><th>期限</th><th>適用性</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join("");
+  const stageSections=Object.entries(phaseDefinitions).map(([id,definition])=>`<section><h2>${esc(definition.title)}圖說重點</h2><ul>${(analysis.stages?.[id]||[]).map(row=>`<li>${esc(row.text)} <small>${esc(packageSourceLabel(row))}</small></li>`).join("")||"<li>未辨識到明確內容，須人工查看原圖。</li>"}${definition.suggestions.map(text=>`<li>【流程建議，待核對】${esc(text)}</li>`).join("")}</ul></section>`).join("");
+  const sourceFiles=[analysis.fileName,...(analysis.files||[]).map(item=>item.fileName)].filter((name,index,list)=>name&&list.indexOf(name)===index);
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>${value("name","工程名稱")}－工程資料包</title><style>
+    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Microsoft JhengHei",Arial,sans-serif;color:#17211e;font-size:10.5pt;line-height:1.55;margin:0}h1{font-size:24pt;color:#12382f;margin:0 0 12px}h2{font-size:16pt;color:#12382f;border-bottom:2px solid #b68b38;padding-bottom:4px;margin-top:24px}h3{font-size:12pt;color:#245647;margin:18px 0 6px}.cover{min-height:250mm;display:flex;flex-direction:column;justify-content:center;text-align:center;page-break-after:always}.cover .tag{color:#9b6c17;letter-spacing:.16em}.notice{border:2px solid #bd3b32;background:#fff4f2;padding:10px 12px;margin:18px 0;text-align:left}.meta{width:100%;border-collapse:collapse;margin:14px 0}.meta th,.meta td,table th,table td{border:1px solid #9caeaa;padding:5px 7px;vertical-align:top}.meta th,table th{background:#edf4f1;text-align:left}table{width:100%;border-collapse:collapse;font-size:8.8pt;margin:6px 0 14px}ul{padding-left:20px}li{margin:3px 0}small{color:#526963}.page-break{page-break-before:always}.signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:30px}.signatures div{border:1px solid #777;height:85px;padding:7px}.drawing-page{page-break-before:always;height:270mm;display:flex;flex-direction:column}.drawing-page img{width:100%;height:255mm;object-fit:contain}.drawing-label{text-align:right;color:#526963;font-size:9pt}.footer-note{margin-top:18px;color:#526963;font-size:9pt}@media screen{body{max-width:900px;margin:28px auto;padding:0 24px;background:white}.drawing-page{height:auto}.drawing-page img{height:auto}html{background:#dfe8e4}}
+  </style></head><body>
+  <section class="cover"><div class="tag">PUBLIC WORKS DOCUMENT PACKAGE</div><h1>${value("name","工程名稱")}</h1><h2>工程圖說與文書作業資料包</h2><p>建立時間：${esc(date)}</p><p>資料來源：${sourceFiles.map(esc).join("、")||"待確認"}</p><div class="notice"><strong>初稿／待核對：</strong>本資料包由建築師資料自動整理，不是核定施工圖、設計簽證或機關正式表單。所有「待確認」欄位、尺寸、金額、期限及版次須由承辦、工地主任、建築師／監造依契約與原圖確認後才能使用。</div></section>
+  <section><h2>一、工程基本資料</h2><table class="meta"><tr><th>工程名稱</th><td>${value("name","工程名稱")}</td><th>主辦機關</th><td>${value("agency","主辦機關")}</td></tr><tr><th>標案／契約編號</th><td>${value("caseNo","契約編號")}</td><th>契約金額</th><td>${value("contractAmount","契約金額")}</td></tr><tr><th>預定開工</th><td>${value("plannedStart","預定開工日")}</td><th>預定完工</th><td>${value("plannedFinish","預定完工日")}</td></tr><tr><th>負責人</th><td>${value("owner","負責人")}</td><th>監造單位</th><td>${value("supervisor","監造單位")}</td></tr><tr><th>辨識工期</th><td>${esc(analysis.duration?.value||"【待確認：契約工期】")}</td><th>設計／建築師</th><td>${esc(analysis.designer||"【待確認：設計／建築師】")}</td></tr></table></section>
+  <section><h2>二、圖說目錄與出圖控制</h2>${sourcePdfUrl?`<p class="notice"><strong>原圖出圖：</strong><a href="${sourcePdfUrl}" target="_blank" rel="noopener">開啟建築師原圖 PDF，依原尺寸列印</a>。請先確認圖號、版次、紙張尺寸與核定狀態。</p>`:""}<table><thead><tr><th>圖號／類型</th><th>圖名／檔名</th><th>來源</th><th>版次控制</th></tr></thead><tbody>${drawings.join("")||'<tr><td colspan="4">【待確認：尚未辨識圖號；請依原圖建立正式圖說目錄】</td></tr>'}</tbody></table><p class="footer-note">DWG 需由 AutoCAD 依核定版次正式出圖；建築師原圖 PDF 應保留向量線條並依指定紙張比例列印，不轉成低解析圖片。</p></section>
+  <section><h2>三、文件明載重點</h2><ul>${(analysis.facts||[]).map(row=>`<li><strong>${esc(row.label)}：</strong>${esc(row.text)} <small>${row.page||row.fileName?esc(packageSourceLabel(row)):""}</small></li>`).join("")||"<li>未辨識到可靠重點，須人工查看原圖。</li>"}</ul></section>
+  ${stageSections}
+  <section class="page-break"><h2>七、公共工程文書總表</h2><p>系統已把常用初稿標成「準備中」，不會把尚未簽認或核定的文件誤標為完成。</p>${documentSections}</section>
+  <section class="page-break"><h2>八、風險、缺漏與核對</h2><h3>風險與注意事項</h3><ul>${(analysis.risks||[]).map(row=>`<li>${esc(row.text)} <small>${esc(packageSourceLabel(row))}</small></li>`).join("")||"<li>未自動辨識明確風險；仍須依契約、規範與現場條件審查。</li>"}</ul><h3>待確認／缺少資料</h3><ul>${(analysis.missing||[]).map(text=>`<li>□ ${esc(text)}</li>`).join("")||"<li>□ 人工核對原圖、契約及機關表單</li>"}</ul><div class="signatures"><div>廠商專案負責人：<br><br>日期：</div><div>工地主任／品管：<br><br>日期：</div><div>建築師／監造確認：<br><br>日期：</div></div></section>
+  </body></html>`;
+}
+async function printFullPackage(analysis) {
+  const printWindow=window.open("","_blank");
+  if(!printWindow){alert("瀏覽器已阻擋列印視窗，請允許此網站開啟新視窗後再按一次。");return;}
+  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>建立工程資料包</title><p style="font-family:sans-serif;padding:30px">正在建立工程文書資料包，請稍候…</p>');
+  window.dispatchEvent(new CustomEvent("engineering-analysis-build-package",{detail:{projectId:activeProjectId(),analysis}}));
+  try{
+    const project=window.EngineeringWorkbench?.getCurrentProject?.()||{}, catalog=window.EngineeringWorkbench?.getDocumentCatalog?.()||[], sourcePdf=await sourcePdfForPrint(activeProjectId());
+    const sourcePdfUrl=sourcePdf?URL.createObjectURL(sourcePdf.blob):"";
+    printWindow.document.open();printWindow.document.write(packageHtml(analysis,project,catalog,sourcePdfUrl));printWindow.document.close();printWindow.focus();
+    if(sourcePdfUrl)setTimeout(()=>URL.revokeObjectURL(sourcePdfUrl),30*60*1000);
+    setStatus(`工程資料包已建立：${catalog.length} 項文書${sourcePdf?"；原圖列印連結已放在資料包第二節":"；未附 PDF，DWG 請由 AutoCAD 正式出圖"}。`);
+    setTimeout(()=>printWindow.print(),500);
+  }catch(error){printWindow.close();setStatus(`建立列印資料包失敗：${error?.message||"未知錯誤"}`,true);}
+}
+function downloadWordPackage(analysis) {
+  window.dispatchEvent(new CustomEvent("engineering-analysis-build-package",{detail:{projectId:activeProjectId(),analysis}}));
+  const project=window.EngineeringWorkbench?.getCurrentProject?.()||{}, catalog=window.EngineeringWorkbench?.getDocumentCatalog?.()||[];
+  download(`工程資料包-${analysis.projectTitle||project.name||"待命名工程"}-${new Date().toISOString().slice(0,10)}.doc`,`\ufeff${packageHtml(analysis,project,catalog)}`,"application/msword;charset=utf-8");
+  setStatus("已建立 Word 工程資料包；原圖 PDF 頁面只在「一鍵建立並列印」時併入。");
+}
 function setStatus(message, error=false) { const el=$("pdf-analysis-status"); el.textContent=message; el.classList.toggle("error",error); }
 function renderSource(row) { return `${esc(row.text)} <span class="source-page">${row.page?`PDF 第 ${row.page} 頁`:`DWG：${esc(row.fileName||"來源檔")}`}</span>`; }
 function renderAnalysis(analysis) {
@@ -308,7 +364,7 @@ function renderAnalysis(analysis) {
   const risks=(analysis.risks||[]).map(renderSource).map(text=>`<li>${text}</li>`).join("") || "<li>未辨識到明確風險條文，仍須人工核對契約與施工規範。</li>";
   const missing=(analysis.missing||[]).map(text=>`<li>${esc(text)}</li>`).join("") || "<li>目前沒有明顯缺漏提示；仍須人工核對原圖及契約。</li>";
   result.innerHTML=`
-    <div class="analysis-result-head"><div><span class="section-kicker">ANALYSIS RESULT</span><h3>${esc(analysis.projectTitle||analysis.fileName)}</h3><p>${esc(analysis.fileName)} · ${esc(new Date(analysis.analyzedAt).toLocaleString("zh-TW"))}</p></div><div class="analysis-actions"><button class="btn" id="apply-pdf-analysis" type="button">套用到目前專案</button><button class="btn secondary" id="download-pdf-analysis" type="button">下載重點摘要</button></div></div>
+    <div class="analysis-result-head"><div><span class="section-kicker">ANALYSIS RESULT</span><h3>${esc(analysis.projectTitle||analysis.fileName)}</h3><p>${esc(analysis.fileName)} · ${esc(new Date(analysis.analyzedAt).toLocaleString("zh-TW"))}</p></div><div class="analysis-actions"><button class="btn" id="build-print-package" type="button">一鍵建立並列印</button><button class="btn secondary" id="download-word-package" type="button">下載 Word 資料包</button><button class="btn secondary" id="download-pdf-analysis" type="button">下載重點摘要</button><button class="text-button" id="apply-pdf-analysis" type="button">只套用專案資料</button></div></div>
     <div class="analysis-metrics"><article><span>文件類型</span><strong>${esc(analysis.documentKind)}</strong></article><article><span>${analysis.files?.length?"DWG 檔案":"頁數"}</span><strong>${analysis.files?.length?`${analysis.files.length} 份`:`${analysis.pageCount} 頁`}</strong></article><article><span>圖號</span><strong>${analysis.drawingIndex?.length||0} 個</strong></article><article><span>工期</span><strong>${esc(analysis.duration?.value||"待確認")}</strong></article></div>
     ${analysis.needsOcr?'<p class="analysis-warning danger"><strong>需要 OCR：</strong>這份 PDF 幾乎沒有可抽取文字，目前只能辨識頁數與檔案資訊；請提供可搜尋文字版，或之後啟用 OCR 再分析。</p>':analysis.browserLimited?'<p class="analysis-warning danger"><strong>DWG 初步分類：</strong>瀏覽器已驗證檔案格式並依檔名分工，但沒有讀取 CAD 內部尺寸、文字與圖層。完整分析請加入出圖 PDF，或回桌面版用 AutoCAD 解析。</p>':'<p class="analysis-warning"><strong>初步自動整理：</strong>這不是設計審查或契約判讀。所有內容保留 PDF 頁碼，施工前須由工地主任／監造逐項核對原圖。</p>'}
     <ul class="analysis-facts">${facts||'<li>目前沒有可靠的文件明載重點。</li>'}</ul>
@@ -326,7 +382,7 @@ function analysisMarkdown(analysis) {
   rows.push(``,`## 風險與注意事項`,...(analysis.risks||[]).map(row=>`- ${row.text}（${sourceLabel(row)}）`),``,`## 待確認／缺少資料`,...(analysis.missing||[]).map(text=>`- ${text}`));
   return rows.join("\n");
 }
-function download(name,content) { const url=URL.createObjectURL(new Blob([content],{type:"text/markdown;charset=utf-8"})); const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
+function download(name,content,type="text/markdown;charset=utf-8") { const url=URL.createObjectURL(new Blob([content],{type})); const a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 async function analyzePdf(file) {
   const loading=pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false});
   const pdf=await loading.promise, metadata=await pdf.getMetadata().catch(()=>({info:{}})), pages=[];
@@ -369,6 +425,8 @@ function bind() {
   result.addEventListener("click",event=>{
     const analysis=loadAnalyses()[activeProjectId()];
     if(!analysis)return;
+    if(event.target.id==="build-print-package")printFullPackage(analysis);
+    if(event.target.id==="download-word-package")downloadWordPackage(analysis);
     if(event.target.id==="apply-pdf-analysis") window.dispatchEvent(new CustomEvent("engineering-analysis-apply",{detail:{projectId:activeProjectId(),analysis}}));
     if(event.target.id==="download-pdf-analysis") download(`圖說重點-${analysis.projectTitle||projectName()}-${new Date().toISOString().slice(0,10)}.md`,analysisMarkdown(analysis));
     const phase=event.target.closest("[data-analysis-phase]")?.dataset.analysisPhase;
