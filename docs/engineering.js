@@ -137,6 +137,35 @@
   function populateSelect() { const select=$("project-select"); select.innerHTML=Object.values(projects).sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(p=>`<option value="${esc(p.id)}"${p.id===activeId?" selected":""}>${esc(p.name)}${p.caseNo?`｜${esc(p.caseNo)}`:""}</option>`).join(""); }
   function fillForm() { const p=current(); if (!p) return; const form=$("project-form"); ["name","agency","caseNo","contractAmount","plannedStart","actualStart","plannedFinish","actualFinish","owner","supervisor","notes"].forEach(k=>form.elements[k].value=p[k]||""); }
   function itemState(id) { return current()?.items?.[id] || {status:"未開始",owner:"",due:"",link:"",notes:""}; }
+  function offsetDate(iso,days) { if(!iso)return "";const date=new Date(`${iso}T12:00:00`);date.setDate(date.getDate()+days);return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`; }
+  function suggestedDue(project,phase) {
+    if(phase==="prepare")return offsetDate(project.plannedStart,-14);
+    if(phase==="start")return project.plannedStart||"";
+    if(phase==="finish")return project.plannedFinish||"";
+    if(phase==="accept")return offsetDate(project.plannedFinish,30);
+    return "";
+  }
+  function seededNotes(project,doc,due) {
+    const phase=phases.find(item=>item.id===doc.phase),shared=[`工程：${project.name||"待確認"}`,`機關：${project.agency||"待確認"}`,`契約編號：${project.caseNo||"待確認"}`,`專案負責人：${project.owner||"待確認"}`,`監造：${project.supervisor||"待確認"}`].join("；");
+    return `【系統預填，待修改】\n共用主表：${shared}\n建議內容：${doc.help}\n階段提醒：${phase.note}\n${due?`暫定期限依目前工程日期推算為 ${due}，請依契約及機關要求修正。`:"期限尚無足夠資料推算，請設定實際期限。"}`;
+  }
+  function seedProjectItems(project,{force=false}={}) {
+    if(!project)return 0;
+    project.items=project.items||{};let added=0;
+    for(const doc of docs){
+      if(!force&&project.items[doc.id])continue;
+      const due=suggestedDue(project,doc.phase);
+      project.items[doc.id]={status:doc.phase==="prepare"?"準備中":"未開始",owner:doc.owner,due,link:"",notes:seededNotes(project,doc,due),seeded:true,updatedAt:new Date().toISOString()};
+      added++;
+    }
+    if(added){project.updatedAt=new Date().toISOString();save();}
+    return added;
+  }
+  function refreshSeededItems(project) {
+    let updated=0;
+    for(const doc of docs){const state=project?.items?.[doc.id];if(!state?.seeded)continue;const due=suggestedDue(project,doc.phase);state.due=due;state.notes=seededNotes(project,doc,due);state.updatedAt=new Date().toISOString();updated++;}
+    return updated;
+  }
   function isOverdue(s) { return s.due && s.due < today() && !["已完成","不適用"].includes(s.status); }
   function phaseProgress(id) { const list=docs.filter(d=>d.phase===id); const done=list.filter(d=>["已完成","不適用"].includes(itemState(d.id).status)).length; return `${done}/${list.length}`; }
   function renderNav() { $("phase-nav").innerHTML=phases.map(p=>`<button class="phase-button ${p.id===activePhase?"active":""} ${phaseProgress(p.id).startsWith(docs.filter(d=>d.phase===p.id).length+"/")?"complete":""}" type="button" data-phase="${p.id}">${p.name}<span>${phaseProgress(p.id)}</span></button>`).join(""); $("phase-guidance").textContent=phases.find(p=>p.id===activePhase).note; }
@@ -147,13 +176,13 @@
     if (projectId !== current()?.id || phase !== activePhase) return;
     const counts=files.reduce((map,file)=>map.set(file.itemId,(map.get(file.itemId)||0)+1),new Map());
     const list=docs.filter(d=>d.phase===activePhase).filter(d=>{const s=itemState(d.id); return !filter || (filter==="overdue"?isOverdue(s):s.status===filter);});
-    $("document-list").innerHTML=list.length?list.map(d=>{const s=itemState(d.id), count=counts.get(d.id)||0; return `<article class="document-item"><div class="document-title"><strong>${esc(d.title)}<span class="required ${d.required?"":"conditional"}">${d.required?"常用必備":"視個案"}</span></strong><p>${esc(d.help)}</p>${count?`<span class="attachment-count">附件 ${count} 份</span>`:""}</div><div class="doc-owner">責任：${esc(s.owner||d.owner)}</div><div class="doc-due ${isOverdue(s)?"overdue":""}">${s.due?`${isOverdue(s)?"已逾期 ":"期限 "}${esc(s.due)}`:"期限待設定"}<br><span class="status-pill ${statusClass(s.status)}">${esc(s.status)}</span></div><button class="btn secondary edit-item" data-id="${d.id}" type="button">更新</button></article>`;}).join(""):`<p class="work-notice">這個階段沒有符合篩選條件的項目。</p>`;
+    $("document-list").innerHTML=list.length?list.map(d=>{const s=itemState(d.id), count=counts.get(d.id)||0; return `<article class="document-item"><div class="document-title"><strong>${esc(d.title)}<span class="required ${d.required?"":"conditional"}">${d.required?"常用必備":"視個案"}</span></strong><p>${esc(d.help)}</p>${s.seeded?'<span class="prefilled-badge">系統預填・待修改</span>':""}${count?`<span class="attachment-count">附件 ${count} 份</span>`:""}</div><div class="doc-owner">責任：${esc(s.owner||d.owner)}</div><div class="doc-due ${isOverdue(s)?"overdue":""}">${s.due?`${isOverdue(s)?"已逾期 ":"期限 "}${esc(s.due)}`:"期限待設定"}<br><span class="status-pill ${statusClass(s.status)}">${esc(s.status)}</span></div><button class="btn secondary edit-item" data-id="${d.id}" type="button">更新</button></article>`;}).join(""):`<p class="work-notice">這個階段沒有符合篩選條件的項目。</p>`;
   }
   function renderSummary() { const states=docs.map(d=>itemState(d.id)); $("stat-total").textContent=states.length; $("stat-done").textContent=states.filter(s=>["已完成","不適用"].includes(s.status)).length; $("stat-open").textContent=states.filter(s=>!["已完成","不適用"].includes(s.status)).length; $("stat-overdue").textContent=states.filter(isOverdue).length; }
   function renderTemplates() { $("template-list").innerHTML=templates.map(([id,title,desc])=>`<article class="template-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><div class="template-actions"><button class="btn secondary draft" data-template="${id}" data-format="doc" type="button">Word</button><button class="btn secondary draft" data-template="${id}" data-format="md" type="button">Markdown</button><button class="btn secondary draft" data-template="${id}" data-format="print" type="button">列印／PDF</button></div></article>`).join(""); }
   function render() { populateSelect(); fillForm(); renderSummary(); renderNav(); renderDocs(); renderTemplates(); window.dispatchEvent(new CustomEvent("engineering-project-change",{detail:{id:activeId}})); }
   async function openItem(id) { const d=docs.find(x=>x.id===id), s=itemState(id); editingItem=id; $("item-phase").textContent=phases.find(p=>p.id===d.phase).name; $("item-title").textContent=d.title; $("item-help").textContent=d.help; const f=$("item-form"); f.elements.status.value=s.status; f.elements.owner.value=s.owner||d.owner; f.elements.due.value=s.due||""; f.elements.link.value=s.link||""; f.elements.notes.value=s.notes||""; $("attachment-status").textContent=""; $("item-dialog").showModal(); await renderAttachments(); }
-  function saveItem() { const f=$("item-form"), p=current(); p.items[editingItem]={status:f.elements.status.value, owner:f.elements.owner.value.trim(), due:f.elements.due.value, link:f.elements.link.value.trim(), notes:f.elements.notes.value.trim(), updatedAt:new Date().toISOString()}; p.updatedAt=new Date().toISOString(); save(); render(); }
+  function saveItem() { const f=$("item-form"), p=current(); p.items[editingItem]={status:f.elements.status.value, owner:f.elements.owner.value.trim(), due:f.elements.due.value, link:f.elements.link.value.trim(), notes:f.elements.notes.value.trim(), seeded:false, updatedAt:new Date().toISOString()}; p.updatedAt=new Date().toISOString(); save(); render(); }
   function download(name, content, type="text/plain;charset=utf-8") { const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
   function sizeLabel(bytes) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1024*1024) return `${(bytes/1024).toFixed(1)} KB`; return `${(bytes/1024/1024).toFixed(1)} MB`; }
   async function renderAttachments() {
@@ -191,6 +220,7 @@
   function applyDocumentAnalysis(analysis,{buildPackage=false}={}) {
     const p=current();
     if(!p||!analysis)return;
+    seedProjectItems(p);
     const marker=`[圖說分析：${analysis.fileName}]`;
     if((!p.name||p.name==="待命名工程")&&analysis.projectTitle)p.name=analysis.projectTitle;
     if(!p.notes.includes(marker)){
@@ -210,10 +240,11 @@
   }
   function bind() {
     $("project-select").addEventListener("change",e=>{activeId=e.target.value;save();render();});
-    $("new-project").addEventListener("click",()=>{const p=baseProject();projects[p.id]=p;activeId=p.id;save();render();$("project-form").elements.name.focus();});
-    $("project-form").addEventListener("submit",e=>{e.preventDefault();const p=current(),f=e.target;["name","agency","caseNo","contractAmount","plannedStart","actualStart","plannedFinish","actualFinish","owner","supervisor","notes"].forEach(k=>p[k]=f.elements[k].value.trim());p.updatedAt=new Date().toISOString();save();render();$("save-status").textContent=`已於 ${new Date().toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})} 儲存`;});
+    $("new-project").addEventListener("click",()=>{const p=baseProject();projects[p.id]=p;activeId=p.id;seedProjectItems(p);save();render();$("project-form").elements.name.focus();});
+    $("project-form").addEventListener("submit",e=>{e.preventDefault();const p=current(),f=e.target;["name","agency","caseNo","contractAmount","plannedStart","actualStart","plannedFinish","actualFinish","owner","supervisor","notes"].forEach(k=>p[k]=f.elements[k].value.trim());const synced=refreshSeededItems(p);p.updatedAt=new Date().toISOString();save();render();$("save-status").textContent=`已儲存共用主表，並同步更新 ${synced} 項仍屬系統預填的文件；人工修改內容已保留。`;});
     $("phase-nav").addEventListener("click",e=>{const b=e.target.closest("[data-phase]");if(!b)return;activePhase=b.dataset.phase;renderNav();renderDocs();});
     $("status-filter").addEventListener("change",renderDocs);
+    $("seed-seven-stages").addEventListener("click",()=>{const added=seedProjectItems(current());render();$("save-status").textContent=added?`已補齊 ${added} 項七階段預填資料；既有內容未被覆蓋。`:"七階段 55 項已有資料，沒有覆蓋你的修改。";});
     $("document-list").addEventListener("click",e=>{const b=e.target.closest(".edit-item");if(b)openItem(b.dataset.id);});
     $("item-form").addEventListener("submit",e=>{e.preventDefault();if(e.submitter?.value==="save"){saveItem();$("item-dialog").close();}else $("item-dialog").close();});
     $("template-list").addEventListener("click",e=>{const b=e.target.closest(".draft");if(!b)return;const id=b.dataset.template,title=templates.find(t=>t[0]===id)[1],base=`${current().name}-${title}-${today()}`;if(b.dataset.format==="doc")download(`${base}.doc`,"\ufeff"+draftHtml(id,title),"application/msword;charset=utf-8");else if(b.dataset.format==="print")printDraft(id,title);else download(`${base}.md`,draftText(id));});
@@ -224,10 +255,11 @@
     $("attachment-files").addEventListener("change",async e=>{try{await addAttachmentFiles(e.target.files);}catch(err){$("attachment-status").textContent=`無法加入：${err.message}`;}finally{e.target.value="";}});
     $("attachment-list").addEventListener("click",async e=>{const b=e.target.closest("[data-file-id]");if(!b)return;const id=b.dataset.fileId;if(b.classList.contains("download-attachment")){const file=await getAttachment(id);if(file)download(file.name,file.blob,file.type);}else if(confirm("確定從此瀏覽器移除這個附件？原始檔不會被刪除。")){await deleteAttachment(id);await renderAttachments();await renderDocs();}});
     $("export-project").addEventListener("click",async()=>{const manifest=(await projectAttachments(current().id).catch(()=>[])).map(({blob,...file})=>file),documentAnalysis=window.EngineeringPdfAnalysis?.getCurrentAnalysis?.()||null;download(`工程文書專案備份-${current().name}-${today()}.json`,JSON.stringify({version:3,exportedAt:new Date().toISOString(),project:current(),documentAnalysis,attachmentManifest:manifest},null,2),"application/json")});
-    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(![1,2,3].includes(data.version)||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;window.EngineeringPdfAnalysis?.importAnalysis?.(p.id,data.documentAnalysis);save();render();alert(data.attachmentManifest?.length?`專案已匯入；備份列有 ${data.attachmentManifest.length} 個附件，但檔案本體須另外加入。`:"備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
+    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(![1,2,3].includes(data.version)||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;seedProjectItems(p);window.EngineeringPdfAnalysis?.importAnalysis?.(p.id,data.documentAnalysis);save();render();alert(data.attachmentManifest?.length?`專案已匯入；備份列有 ${data.attachmentManifest.length} 個附件，但檔案本體須另外加入。`:"備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
     $("delete-project").addEventListener("click",async()=>{if(Object.keys(projects).length<=1)return alert("至少保留一個專案；可新增空白專案後再刪除。");if(!confirm(`確定刪除「${current().name}」及其本機附件？請先備份，刪除後無法復原。`))return;const removing=activeId;delete projects[activeId];activeId=Object.keys(projects)[0];window.EngineeringPdfAnalysis?.removeAnalysis?.(removing);save();await deleteProjectAttachments(removing).catch(()=>{});render();});
   }
   ensureProject(tenderData());
+  seedProjectItems(current());
   bind();
   render();
   window.EngineeringWorkbench={

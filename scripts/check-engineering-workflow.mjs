@@ -44,6 +44,9 @@ assert(/build-print-package/.test(analysis) && /download-word-package/.test(anal
 assert(/sourcePdfForPrint/.test(analysis) && /原圖列印連結已放在資料包/.test(analysis), "一鍵列印未提供建築師原圖連結");
 assert(/engineering-analysis-build-package/.test(js) && /analysisPackageItems/.test(js), "一鍵資料包未建立文書追蹤初稿");
 assert(/待確認/.test(analysis) && /不會把尚未簽認或核定的文件誤標為完成/.test(analysis), "一鍵資料包缺少待確認與核定界線");
+assert(/seed-seven-stages/.test(html) && /seedProjectItems/.test(js) && /系統預填・待修改/.test(js), "缺少七階段可修改預填資料");
+assert(/refreshSeededItems/.test(js) && /工程基本資料是共用主表/.test(html), "共用主表未同步七階段預填文件");
+assert(/seeded:false/.test(js), "人工修改後未解除自動同步，可能覆蓋使用者資料");
 assert(/施工前/.test(analysis) && /施工中/.test(analysis) && /完工／竣工/.test(analysis), "PDF 分析缺少施工前中後分類");
 assert(/source-page/.test(analysis) && /PDF 第/.test(analysis), "PDF 分析缺少來源頁碼");
 assert(/needsOcr/.test(analysis) && /不會上傳公開網站/.test(html), "PDF 分析缺少 OCR 與隱私界線");

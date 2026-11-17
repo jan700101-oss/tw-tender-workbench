@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="app-icon.svg">
   <link rel="stylesheet" href="styles.css?v=20261116-engineering-1">
-  <link rel="stylesheet" href="engineering.css?v=20261117-one-click-pack-1">
+  <link rel="stylesheet" href="engineering.css?v=20261117-seven-stage-prefill-1">
 </head>
 <body class="engineering-page">
 <a class="skip-link" href="#workflow">跳到工程流程</a>
@@ -36,6 +36,7 @@
       <div class="section-heading"><div><p class="section-kicker">PROJECT</p><h2 id="project-heading">工程專案</h2></div><button id="new-project" class="btn secondary" type="button">＋ 新增專案</button></div>
       <div class="project-picker"><label class="field">目前專案<select id="project-select"></select></label><div class="project-actions"><button id="export-project" class="btn secondary" type="button">備份專案進度（JSON）</button><label class="btn secondary" for="import-project">匯入專案備份</label><input id="import-project" type="file" accept="application/json,.json" hidden><button id="delete-project" class="text-button danger-text" type="button">刪除專案</button></div></div>
       <p class="storage-note"><strong>JSON 只供本系統備份進度，不是公共工程正式文件。</strong> 正式文件仍保留 PDF、Word／ODT、Excel／ODS、PCCES XML、TPA、CAD／BIM 等原始格式。JSON 備份含附件清單但不含檔案本體。</p>
+      <p class="shared-data-note"><strong>工程基本資料是共用主表，只填一次。</strong> 工程名稱、機關、案號、金額、日期、負責人與監造修改後，7 階段預填文書、Word 與列印資料包會同步使用；已人工修改的文件不會被覆蓋。</p>
       <form id="project-form" class="project-form">
         <label class="field field-wide">工程名稱<input name="name" required maxlength="200"></label>
         <label class="field">主辦機關<input name="agency" maxlength="160"></label>
@@ -77,7 +78,7 @@
     </section>
 
     <section id="workflow" class="workflow-panel" aria-labelledby="workflow-heading">
-      <div class="section-heading workflow-heading"><div><p class="section-kicker">WORKFLOW</p><h2 id="workflow-heading">公共工程文書流程</h2></div><div class="workflow-tools"><label class="field compact">篩選<select id="status-filter"><option value="">全部狀態</option><option>未開始</option><option>準備中</option><option>送審中</option><option>退補</option><option>已核定</option><option>已完成</option><option>不適用</option><option value="overdue">只看逾期</option></select></label><button id="export-csv" class="btn secondary" type="button">匯出清單 CSV</button></div></div>
+      <div class="section-heading workflow-heading"><div><p class="section-kicker">WORKFLOW</p><h2 id="workflow-heading">公共工程文書流程</h2><p>7 階段已先建立「系統預填、待修改」初稿；按每一列的「更新」即可改成實際資料。</p></div><div class="workflow-tools"><label class="field compact">篩選<select id="status-filter"><option value="">全部狀態</option><option>未開始</option><option>準備中</option><option>送審中</option><option>退補</option><option>已核定</option><option>已完成</option><option>不適用</option><option value="overdue">只看逾期</option></select></label><button id="seed-seven-stages" class="btn secondary" type="button">補齊七階段預填</button><button id="export-csv" class="btn secondary" type="button">匯出清單 CSV</button></div></div>
       <nav id="phase-nav" class="phase-nav" aria-label="工程階段"></nav>
       <div id="phase-guidance" class="phase-guidance"></div>
       <div id="document-list" class="document-list"></div>
@@ -121,8 +122,8 @@
   </form>
 </dialog>
 <footer class="site-footer"><div class="wrap footer-grid"><div><strong>公共工程文書中心</strong><p>把文件責任、期限與版本留在專案裡。</p></div><div class="footer-note"><p>資料只保存在目前瀏覽器；請定期匯出 JSON。未上傳到網站伺服器。</p></div></div></footer>
-<script src="engineering.js?v=20261117-one-click-pack-1"></script>
-<script type="module" src="engineering-analysis.js?v=20261117-one-click-pack-1"></script>
+<script src="engineering.js?v=20261117-seven-stage-prefill-1"></script>
+<script type="module" src="engineering-analysis.js?v=20261117-seven-stage-prefill-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>
