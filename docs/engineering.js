@@ -163,7 +163,7 @@
   }
   function tenderData() {
     const params=new URLSearchParams(location.search);
-    try { const raw=params.get("tender"); return {...(raw?JSON.parse(raw):{}),tenderKey:params.get("tenderKey")||""}; }
+    try { const raw=params.get("tender"),data=raw?JSON.parse(raw):{}; return {...data,tenderKey:params.get("tenderKey")||data.tenderKey||""}; }
     catch { return {tenderKey:params.get("tenderKey")||""}; }
   }
     function populateSelect() { const select=$("project-select"); select.innerHTML=Object.values(projects).sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(p=>`<option value="${esc(p.id)}"${p.id===activeId?" selected":""}>${esc(p.name)}${p.caseNo?`｜${esc(p.caseNo)}`:""}</option>`).join(""); }
