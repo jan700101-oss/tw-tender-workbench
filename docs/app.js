@@ -41,6 +41,7 @@
     customDates: $("custom-dates"),
     start: $("f-start"),
     end: $("f-end"),
+    announcementDay: $("f-announcement-day"),
     sort: $("f-sort"),
     budget: $("f-budget"),
     deadline: $("f-deadline"),
@@ -247,7 +248,6 @@
     }
   }
   function renderQuickNavigation() {
-    const localRows=openTenders.filter(isMyOpportunity);
     const regions=[...new Set(openTenders.map(r=>r.region).filter(Boolean))];
     const preferred=["彰化縣","臺中市","南投縣","雲林縣"];
     const regionItems=[{label:"全台地區",value:"",count:openTenders.length},
@@ -279,7 +279,7 @@
     const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-asc",budget:"",deadlineWindow:"",retender:"",openOnly:true};
     if(type==="region")next.region=value;
     else if(type==="budget")next.budget=value;
-    else if(type==="date"){next.range="custom";next.start=value;next.end=value;next.deadlineWindow="";}
+    else if(type==="date"){next.announcementDay=value;next.deadlineWindow="";}
     else if(type==="keyword")next.q=value;
     else if(type==="category")next.attr=value;
     else if(type==="agency")next.agency=value;
@@ -405,6 +405,7 @@
       range: els.range.value,
       start: els.start.value,
       end: els.end.value,
+      announcementDay: els.announcementDay.value,
       sort: els.sort.value,
       budget: els.budget.value,
       deadlineWindow: els.deadline.value,
@@ -424,6 +425,7 @@
     els.range.value = s.range || "3";
     els.start.value = s.start || "";
     els.end.value = s.end || "";
+    els.announcementDay.value = s.announcementDay || "";
     els.sort.value = s.sort || "deadline-asc";
     els.budget.value = s.budget || "";
     els.deadline.value = s.deadlineWindow ?? "14-plus";
@@ -431,6 +433,7 @@
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
     updateQuickCategoryState();
+    updateQuickNavigationState();
   }
 
   function updateQuickCategoryState() {
@@ -441,7 +444,23 @@
     });
   }
 
+  function updateQuickNavigationState() {
+    if (!els.announcementDay) return;
+    const state=getFilterState();
+    document.querySelectorAll(".quick-nav-chip").forEach(button=>{
+      const type=button.dataset.navType,value=button.dataset.navValue;
+      const active=type==="region"?state.region===value&&!!value:
+        type==="budget"?state.budget===value:
+        type==="date"?state.announcementDay===value:
+        type==="keyword"?state.q===value:
+        type==="category"?state.attr===value:
+        type==="agency"?state.agency===value:false;
+      button.setAttribute("aria-pressed",String(active));
+    });
+  }
+
   async function applyFilters() {
+    updateQuickNavigationState();
     const token = ++loadToken;
     const s = getFilterState();
     const today = todayIso();
@@ -500,6 +519,7 @@
       if (s.method && r.method !== s.method) return false;
       if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
+      if (s.announcementDay && r.periodStart !== s.announcementDay) return false;
       if (minDate && r.periodEnd < minDate) return false;
       if (maxDate && r.periodStart > maxDate) return false;
       if (s.openOnly && currentTab !== "fav") { // 收藏分頁永遠顯示全部收藏
