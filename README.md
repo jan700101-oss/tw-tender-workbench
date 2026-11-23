@@ -89,3 +89,5 @@ git add docs/data && git commit -m "更新標案資料" && git push
 
 `outputs/` 內的規劃文件描述決標資料、附件解析等後續階段;目前僅同步招標半月檔,
 官方頁面上的其他檔案類型會記錄在 `docs/data/index.json` 的 `discoveredFiles` 供評估。
+
+標案工作清單可連結工程文書專案；PDF／DWG 初步分析的重點、風險與待確認事項會回到原標案卡片，方便持續追蹤。原始附件與分析仍保存在使用者瀏覽器，不會上傳至此網站。

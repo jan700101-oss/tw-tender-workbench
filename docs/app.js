@@ -681,21 +681,27 @@
     const r = filtered.find(r => recordKey(r) === key) || favorites[key];
     if (!r) return;
     const item = work[key] || { stage: stages[0], owner: "", followUp: "", notes: "", tasks: [] };
+    const analysis = item.documentAnalysis && typeof item.documentAnalysis === "object" ? item.documentAnalysis : null;
+    const linkedProjectId = item.engineeringProjectId || analysis?.projectId || "";
+    const analysisPanel = analysis ? `<section class="detail-field wide"><h3>文件分析摘要</h3><p><strong>${escapeHtml(analysis.fileName || "PDF／DWG")}</strong> · ${escapeHtml(analysis.documentKind || "初步分析")} · ${escapeHtml(analysis.analyzedAt ? new Date(analysis.analyzedAt).toLocaleString("zh-TW") : "分析時間未提供")} · ${escapeHtml(analysis.pageCount || 0)} 頁</p><ul>${(analysis.highlights || []).map(row => `<li><strong>${escapeHtml(row.label || "文件重點")}：</strong>${escapeHtml(row.text || "")}${row.page ? `（PDF 第 ${escapeHtml(row.page)} 頁）` : row.fileName ? `（來源：${escapeHtml(row.fileName)}）` : ""}</li>`).join("") || "<li>尚無引用重點，請開啟完整分析檢視。</li>"}</ul>${analysis.risks?.length ? `<p><strong>風險提示：</strong>${analysis.risks.map(row => escapeHtml(typeof row === "string" ? row : row.text || "")).filter(Boolean).join("；")}</p>` : ""}${analysis.missing?.length ? `<p><strong>待確認：</strong>${analysis.missing.map(escapeHtml).join("；")}</p>` : ""}<a href="engineering.html?project=${encodeURIComponent(linkedProjectId)}&amp;tenderKey=${encodeURIComponent(key)}">開啟完整分析與附件 →</a></section>` : "";
     els.detailContent.className = "detail-panel";
     els.detailContent.innerHTML = `<header><div><span>案件工作台</span><h2>${escapeHtml(r.title)}</h2><p>${escapeHtml(r.agency)} · ${escapeHtml(r.caseNo)}</p></div><button class="detail-close" type="button" aria-label="關閉">×</button></header>
-      <p class="work-notice">清單為通用準備項目，尚未解析此案附件；資格、金額與送件時間須依官方投標須知核對。資料保存在此瀏覽器，請定期匯出備份。</p>
+      <p class="work-notice">清單為通用準備項目，${analysis ? "已完成文件初步分析；摘要與待確認事項已連回本案。" : "尚未分析此案文件；可建立工程文書專案並上傳 PDF／DWG。"}資格、金額與送件時間仍須依官方投標須知核對。資料保存在此瀏覽器，請定期匯出備份。</p>
       <form id="work-form"><div class="detail-grid">
       <label class="field">進度<select name="stage">${stages.map(s => `<option${s === item.stage ? " selected" : ""}>${s}</option>`).join("")}</select></label>
       <label class="field">負責人<input name="owner" value="${escapeHtml(item.owner)}" maxlength="80"></label>
       <label class="field">下次追蹤日期<input name="followUp" type="date" value="${escapeHtml(item.followUp)}"></label>
       <div class="detail-field"><small>官方截止日／預算</small><strong>${escapeHtml(r.deadline || "待確認")} ／ ${escapeHtml(formatBudget(r.budget))}</strong></div>
       <label class="field detail-field wide">紀錄與待確認事項<textarea name="notes" rows="4" maxlength="10000">${escapeHtml(item.notes)}</textarea></label></div>
+      ${analysisPanel}
       <fieldset class="work-tasks"><legend>投標與履約準備</legend>${taskLabels.map((label,i) => `<label class="check"><input type="checkbox" name="task" value="${i}"${item.tasks?.includes(i) ? " checked" : ""}>${label}</label>`).join("")}</fieldset>
       <div class="detail-actions"><button class="btn" type="submit">保存並加入追蹤</button><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener">核對官方公告 ↗</a></div><p id="work-status" role="status"></p></form>`;
     const engineeringLink = document.createElement('a');
     engineeringLink.className = 'btn';
-    engineeringLink.textContent = '建立工程文書專案';
-    engineeringLink.href = `engineering.html?tender=${encodeURIComponent(JSON.stringify({ title:r.title, agency:r.agency, caseNo:r.caseNo, budget:r.budget, deadline:r.deadline, officialUrl:officialSearchUrl(r) }))}`;
+    engineeringLink.textContent = linkedProjectId ? "開啟工程文書專案" : "建立工程文書專案";
+    engineeringLink.href = linkedProjectId
+      ? `engineering.html?project=${encodeURIComponent(linkedProjectId)}&tenderKey=${encodeURIComponent(key)}`
+      : `engineering.html?tender=${encodeURIComponent(JSON.stringify({ title:r.title, agency:r.agency, caseNo:r.caseNo, budget:r.budget, deadline:r.deadline, officialUrl:officialSearchUrl(r), tenderKey:key }))}`;
     els.detailContent.querySelector('.detail-actions').appendChild(engineeringLink);
     const docLink = document.createElement('a');
     docLink.className = 'btn secondary'; docLink.textContent = '帶入本機文件助理（須先啟動整合版）';
@@ -704,7 +710,8 @@
     els.detailDialog.showModal();
     $("work-form").addEventListener("submit", e => {
       e.preventDefault(); const form = new FormData(e.target);
-      work[key] = { stage: form.get("stage"), owner: form.get("owner").trim(), followUp: form.get("followUp"), notes: form.get("notes").trim(), tasks: form.getAll("task").map(Number), updatedAt: new Date().toISOString() };
+      const previous = work[key] || {};
+      work[key] = { ...previous, stage: form.get("stage"), owner: form.get("owner").trim(), followUp: form.get("followUp"), notes: form.get("notes").trim(), tasks: form.getAll("task").map(Number), updatedAt: new Date().toISOString() };
       favorites[key] = r;
       const saved = saveJson(WORK_KEY, work) && saveJson(FAV_KEY, favorites);
       $("work-status").textContent = saved ? "已保存，可在「我的追蹤」繼續處理。" : "僅保留在目前頁面，請匯出備份。";
