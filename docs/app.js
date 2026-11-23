@@ -264,19 +264,19 @@
     for(const row of openTenders)if(row.periodStart)dateCounts.set(row.periodStart,(dateCounts.get(row.periodStart)||0)+1);
     const dateItems=[...dateCounts.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8).map(([value,count])=>({value,label:new Date(value+"T00:00:00").toLocaleDateString("zh-TW",{month:"2-digit",day:"2-digit"}),count}));
     renderQuickNavChips("quick-nav-date",dateItems,"date");
-    const keywordRows=localRows.length?localRows:openTenders;
+    const keywordRows=openTenders;
     const keywordItems=quickKeywords.map(value=>({value,label:value,count:keywordRows.filter(r=>(r.title||"").includes(value)).length})).filter(item=>item.count>0).sort((a,b)=>b.count-a.count).slice(0,8);
     renderQuickNavChips("quick-nav-keyword",keywordItems,"keyword");
     const categoryCounts=new Map();
     for(const row of openTenders)if(row.attr)categoryCounts.set(row.attr,(categoryCounts.get(row.attr)||0)+1);
     renderQuickNavChips("quick-nav-category",[...categoryCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([value,count])=>({value,label:value,count})),"category");
-    const agencyRows=localRows.length?localRows:openTenders,agencyCounts=new Map();
+    const agencyRows=openTenders,agencyCounts=new Map();
     for(const row of agencyRows)if(row.agency)agencyCounts.set(row.agency,(agencyCounts.get(row.agency)||0)+1);
     const agencyItems=[...agencyCounts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"zh-Hant")).slice(0,8).map(([value,count])=>({value,label:value,count}));
     renderQuickNavChips("quick-nav-agency",agencyItems,"agency");
   }
   function applyQuickNavigation(type,value) {
-    const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-asc",budget:"",deadlineWindow:"14-plus",retender:"",openOnly:true};
+    const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-asc",budget:"",deadlineWindow:"",retender:"",openOnly:true};
     if(type==="region")next.region=value;
     else if(type==="budget")next.budget=value;
     else if(type==="date"){next.range="custom";next.start=value;next.end=value;next.deadlineWindow="";}
