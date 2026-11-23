@@ -206,7 +206,7 @@
             <option value="budget-desc">預算由高到低</option>
           </select>
         </div>
-        <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></select></div>
+        <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><optgroup label="常用預算區間"><option value="0:500000">50 萬以下</option><option value="500000:1000000">50～100 萬</option><option value="1000000:2500000">100～250 萬</option><option value="2500000:5000000">250～500 萬</option><option value="5000000:10000000">500～1,000 萬</option><option value="10000000:50000000">1,000～5,000 萬</option><option value="50000000:100000000">5,000 萬～1 億</option><option value="100000000:1000000000">1 億～10 億</option><option value="1000000000:">10 億以上</option><option value="missing">未提供金額</option></optgroup><optgroup label="舊版上限篩選"><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></optgroup></select></div>
       </div>
       <div class="filter-footer">
         <button id="btn-my-source" class="btn" type="button">我的案源：至少剩 2 週</button>
