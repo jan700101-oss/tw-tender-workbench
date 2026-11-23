@@ -161,6 +161,18 @@
     const amount = budgetNumber(value);
     return amount ? `NT$ ${numberFormat.format(amount)}` : "未提供";
   }
+  function matchesBudget(r, filter) {
+    if (!filter) return true;
+    const amount=budgetNumber(r.budget);
+    if (filter==="missing") return amount===0;
+    if (filter.includes(":")) {
+      if (!amount) return false;
+      const [minRaw,maxRaw]=filter.split(":");
+      const min=Number(minRaw)||0, max=Number(maxRaw)||0;
+      return (!min||amount>min) && (!max||amount<=max);
+    }
+    return amount>0 && amount<=Number(filter);
+  }
 
   function qualificationGroup(r) {
     const text = `${r.title || ""} ${r.method || ""}`;
@@ -207,6 +219,74 @@
     if (suffix) return { round: chineseNumber(suffix[1]), source: "title", label: `案名顯示第 ${chineseNumber(suffix[1])} 次` };
     if (/(?:重新|重行)招標/.test(title)) return { round: 2, source: "title", label: "案名顯示重新招標" };
     return { round: 0, source: "none", label: "" };
+  }
+
+  const quickBudgetBands=[
+    {label:"50 萬以下",min:0,max:500000},
+    {label:"50～100 萬",min:500000,max:1000000},
+    {label:"100～250 萬",min:1000000,max:2500000},
+    {label:"250～500 萬",min:2500000,max:5000000},
+    {label:"500～1,000 萬",min:5000000,max:10000000},
+    {label:"1,000～5,000 萬",min:10000000,max:50000000},
+    {label:"5,000 萬～1 億",min:50000000,max:100000000},
+    {label:"1 億～10 億",min:100000000,max:1000000000},
+    {label:"10 億以上",min:1000000000,max:0}
+  ];
+  const quickKeywords=["整修","防水","廁所","教室","校舍","辦公室","屋頂","室內裝修"];
+  function renderQuickNavChips(id,items,type) {
+    const target=$(id); if(!target)return;
+    target.textContent="";
+    for(const item of items) {
+      const button=document.createElement("button");
+      button.type="button";button.className="quick-nav-chip";
+      button.dataset.navType=type;button.dataset.navValue=item.value;
+      button.setAttribute("aria-pressed","false");
+      const label=document.createElement("span");label.textContent=item.label;
+      const count=document.createElement("small");count.textContent=numberFormat.format(item.count||0);
+      button.append(label,count);target.appendChild(button);
+    }
+  }
+  function renderQuickNavigation() {
+    const localRows=openTenders.filter(isMyOpportunity);
+    const regions=[...new Set(openTenders.map(r=>r.region).filter(Boolean))];
+    const preferred=["彰化縣","臺中市","南投縣","雲林縣"];
+    const regionItems=[{label:"全台地區",value:"",count:openTenders.length},
+      ...preferred.filter(value=>regions.includes(value)).map(value=>({label:value,value,count:openTenders.filter(r=>r.region===value).length})),
+      ...regions.filter(value=>!preferred.includes(value)).sort((a,b)=>a.localeCompare(b,"zh-Hant")).map(value=>({label:value,value,count:openTenders.filter(r=>r.region===value).length}))];
+    renderQuickNavChips("quick-nav-region",regionItems,"region");
+    const budgetItems=quickBudgetBands.map(band=>{
+      const filter=band.max?String(band.min)+":"+String(band.max):String(band.min)+":";
+      return {label:band.label,value:filter,count:openTenders.filter(r=>matchesBudget(r,filter)).length};
+    });
+    budgetItems.push({label:"未提供金額",value:"missing",count:openTenders.filter(r=>!budgetNumber(r.budget)).length});
+    renderQuickNavChips("quick-nav-budget",budgetItems,"budget");
+    const dateCounts=new Map();
+    for(const row of openTenders)if(row.periodStart)dateCounts.set(row.periodStart,(dateCounts.get(row.periodStart)||0)+1);
+    const dateItems=[...dateCounts.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8).map(([value,count])=>({value,label:new Date(value+"T00:00:00").toLocaleDateString("zh-TW",{month:"2-digit",day:"2-digit"}),count}));
+    renderQuickNavChips("quick-nav-date",dateItems,"date");
+    const keywordRows=localRows.length?localRows:openTenders;
+    const keywordItems=quickKeywords.map(value=>({value,label:value,count:keywordRows.filter(r=>(r.title||"").includes(value)).length})).filter(item=>item.count>0).sort((a,b)=>b.count-a.count).slice(0,8);
+    renderQuickNavChips("quick-nav-keyword",keywordItems,"keyword");
+    const categoryCounts=new Map();
+    for(const row of openTenders)if(row.attr)categoryCounts.set(row.attr,(categoryCounts.get(row.attr)||0)+1);
+    renderQuickNavChips("quick-nav-category",[...categoryCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([value,count])=>({value,label:value,count})),"category");
+    const agencyRows=localRows.length?localRows:openTenders,agencyCounts=new Map();
+    for(const row of agencyRows)if(row.agency)agencyCounts.set(row.agency,(agencyCounts.get(row.agency)||0)+1);
+    const agencyItems=[...agencyCounts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"zh-Hant")).slice(0,8).map(([value,count])=>({value,label:value,count}));
+    renderQuickNavChips("quick-nav-agency",agencyItems,"agency");
+  }
+  function applyQuickNavigation(type,value) {
+    const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-asc",budget:"",deadlineWindow:"14-plus",retender:"",openOnly:true};
+    if(type==="region")next.region=value;
+    else if(type==="budget")next.budget=value;
+    else if(type==="date"){next.range="custom";next.start=value;next.end=value;next.deadlineWindow="";}
+    else if(type==="keyword")next.q=value;
+    else if(type==="category")next.attr=value;
+    else if(type==="agency")next.agency=value;
+    document.querySelectorAll(".quick-nav-group").forEach(group=>group.open=false);
+    setFilterState(next);
+    switchTab("all");
+    $("results-heading").scrollIntoView({behavior:"smooth",block:"start"});
   }
 
   function renderStats() {
@@ -416,7 +496,7 @@
       const group = qualificationGroup(r);
       if (s.qualification === "general" && !isGeneralBusinessCandidate(r)) return false;
       if (s.qualification && s.qualification !== "general" && group !== s.qualification) return false;
-      if (s.budget && (!budgetNumber(r.budget) || budgetNumber(r.budget) > Number(s.budget))) return false;
+      if (s.budget && !matchesBudget(r, s.budget)) return false;
       if (s.method && r.method !== s.method) return false;
       if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
@@ -800,6 +880,7 @@
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
+    $("quick-nav-heading").closest(".quick-nav").addEventListener("click",e=>{const button=e.target.closest("button[data-nav-type]");if(button)applyQuickNavigation(button.dataset.navType,button.dataset.navValue);});
     $("btn-export").addEventListener("click", exportCsv);
     $("backup-file").addEventListener("change", e => { importBackup(e.target.files[0]); e.target.value = ""; });
     let timer;
@@ -988,6 +1069,7 @@
     if (!openTenders.length) { els.open.checked = false; }
     renderStats();
     populateFilterOptions();
+    renderQuickNavigation();
     renderSyncStatus();
     const hasOpen = openTenders.length > 0;
     if (!hasOpen) {
