@@ -123,18 +123,50 @@
   async function getAttachment(id) { return fileRequest("readonly", store => store.get(id)); }
   async function deleteAttachment(id) { return fileRequest("readwrite", store => store.delete(id)); }
   async function deleteProjectAttachments(projectId) { const files=await projectAttachments(projectId); await Promise.all(files.map(file=>deleteAttachment(file.id))); }
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); localStorage.setItem(`${STORAGE_KEY}.active`, activeId); }
-  function baseProject(data={}) { const id=uid(); return { id, name:data.title || "待命名工程", agency:data.agency || "", caseNo:data.caseNo || "", contractAmount:data.budget || "", plannedStart:"", actualStart:"", plannedFinish:"", actualFinish:"", owner:"", supervisor:"", notes:data.officialUrl ? `官方公告：${data.officialUrl}` : "", items:{}, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() }; }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); localStorage.setItem(`${STORAGE_KEY}.active`, activeId); syncTenderWork(current()); }
+  function syncTenderWork(project, analysis=null) {
+    if (!project?.tenderKey) return;
+    let work={};
+    try { work=JSON.parse(localStorage.getItem("twb.work.v1")||"{}"); } catch {}
+    if (!work || typeof work!=="object" || Array.isArray(work)) work={};
+    const key=project.tenderKey;
+    const item=work[key]||{stage:"評估中",owner:"",followUp:"",notes:"",tasks:[]};
+    const next={...item,engineeringProjectId:project.id,updatedAt:new Date().toISOString()};
+    if (analysis && typeof analysis==="object") {
+      const facts=Array.isArray(analysis.facts)?analysis.facts:(Array.isArray(analysis.highlights)?analysis.highlights:[]);
+      const risks=Array.isArray(analysis.risks)?analysis.risks:[];
+      next.documentAnalysis={
+        projectId:project.id,fileName:analysis.fileName||"PDF／DWG",documentKind:analysis.documentKind||"初步分析",
+        analyzedAt:analysis.analyzedAt||new Date().toISOString(),pageCount:Number(analysis.pageCount)||0,sourceType:analysis.sourceType||"pdf",
+        highlights:facts.slice(0,4).map(row=>({label:row.label||"文件重點",text:row.text||"",page:row.page||"",fileName:row.fileName||""})),
+        risks:risks.slice(0,3).map(row=>typeof row==="string"?row:(row.text||"")).filter(Boolean),
+        missing:(Array.isArray(analysis.missing)?analysis.missing:[]).slice(0,5).map(row=>typeof row==="string"?row:(row.text||"")).filter(Boolean)
+      };
+    }
+    work[key]=next;
+    localStorage.setItem("twb.work.v1",JSON.stringify(work));
+  }
+  function baseProject(data={}) { const id=uid(); return { id, name:data.title || "待命名工程", agency:data.agency || "", caseNo:data.caseNo || "", contractAmount:data.budget || "", plannedStart:"", actualStart:"", plannedFinish:"", actualFinish:"", owner:"", supervisor:"", notes:data.officialUrl ? `官方公告：${data.officialUrl}` : "", items:{}, tenderKey:data.tenderKey||"", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() }; }
   function current() { return projects[activeId]; }
   function ensureProject(data={}) {
+    const requested=new URLSearchParams(location.search).get("project");
+    if (requested && projects[requested]) {
+      activeId=requested;
+      if (data.tenderKey) projects[requested].tenderKey=data.tenderKey;
+      save(); return;
+    }
     if (data.title) {
       const existing = Object.values(projects).find(p => (data.caseNo && p.caseNo === data.caseNo) || (!data.caseNo && p.name === data.title));
-      if (existing) { activeId = existing.id; save(); return; }
+      if (existing) { activeId=existing.id; if(data.tenderKey) existing.tenderKey=data.tenderKey; save(); return; }
     } else if (Object.keys(projects).length) return;
     const p=baseProject(data); projects[p.id]=p; activeId=p.id; save();
   }
-  function tenderData() { try { const raw=new URLSearchParams(location.search).get("tender"); return raw ? JSON.parse(raw) : {}; } catch { return {}; } }
-  function populateSelect() { const select=$("project-select"); select.innerHTML=Object.values(projects).sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(p=>`<option value="${esc(p.id)}"${p.id===activeId?" selected":""}>${esc(p.name)}${p.caseNo?`｜${esc(p.caseNo)}`:""}</option>`).join(""); }
+  function tenderData() {
+    const params=new URLSearchParams(location.search);
+    try { const raw=params.get("tender"),data=raw?JSON.parse(raw):{}; return {...data,tenderKey:params.get("tenderKey")||data.tenderKey||""}; }
+    catch { return {tenderKey:params.get("tenderKey")||""}; }
+  }
+    function populateSelect() { const select=$("project-select"); select.innerHTML=Object.values(projects).sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(p=>`<option value="${esc(p.id)}"${p.id===activeId?" selected":""}>${esc(p.name)}${p.caseNo?`｜${esc(p.caseNo)}`:""}</option>`).join(""); }
   function fillForm() { const p=current(); if (!p) return; const form=$("project-form"); ["name","agency","caseNo","contractAmount","plannedStart","actualStart","plannedFinish","actualFinish","owner","supervisor","notes"].forEach(k=>form.elements[k].value=p[k]||""); }
   function itemState(id) { return current()?.items?.[id] || {status:"未開始",owner:"",due:"",link:"",notes:""}; }
   function offsetDate(iso,days) { if(!iso)return "";const date=new Date(`${iso}T12:00:00`);date.setDate(date.getDate()+days);return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`; }
@@ -250,12 +282,13 @@
     $("template-list").addEventListener("click",e=>{const b=e.target.closest(".draft");if(!b)return;const id=b.dataset.template,title=templates.find(t=>t[0]===id)[1],base=`${current().name}-${title}-${today()}`;if(b.dataset.format==="doc")download(`${base}.doc`,"\ufeff"+draftHtml(id,title),"application/msword;charset=utf-8");else if(b.dataset.format==="print")printDraft(id,title);else download(`${base}.md`,draftText(id));});
     $("export-csv").addEventListener("click",exportCsv);
     window.addEventListener("engineering-analysis-phase",e=>{const phase=e.detail?.phase;if(!phases.some(item=>item.id===phase))return;activePhase=phase;renderNav();renderDocs();$("workflow").scrollIntoView({behavior:"smooth",block:"start"});});
+    window.addEventListener("engineering-analysis-saved",e=>{const detail=e.detail||{};if(detail.projectId===current()?.id)syncTenderWork(current(),detail.analysis);});
     window.addEventListener("engineering-analysis-apply",e=>{const detail=e.detail||{};if(detail.projectId===current()?.id)applyDocumentAnalysis(detail.analysis);});
     window.addEventListener("engineering-analysis-build-package",e=>{const detail=e.detail||{};if(detail.projectId===current()?.id)applyDocumentAnalysis(detail.analysis,{buildPackage:true});});
     $("attachment-files").addEventListener("change",async e=>{try{await addAttachmentFiles(e.target.files);}catch(err){$("attachment-status").textContent=`無法加入：${err.message}`;}finally{e.target.value="";}});
     $("attachment-list").addEventListener("click",async e=>{const b=e.target.closest("[data-file-id]");if(!b)return;const id=b.dataset.fileId;if(b.classList.contains("download-attachment")){const file=await getAttachment(id);if(file)download(file.name,file.blob,file.type);}else if(confirm("確定從此瀏覽器移除這個附件？原始檔不會被刪除。")){await deleteAttachment(id);await renderAttachments();await renderDocs();}});
     $("export-project").addEventListener("click",async()=>{const manifest=(await projectAttachments(current().id).catch(()=>[])).map(({blob,...file})=>file),documentAnalysis=window.EngineeringPdfAnalysis?.getCurrentAnalysis?.()||null;download(`工程文書專案備份-${current().name}-${today()}.json`,JSON.stringify({version:3,exportedAt:new Date().toISOString(),project:current(),documentAnalysis,attachmentManifest:manifest},null,2),"application/json")});
-    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(![1,2,3].includes(data.version)||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;seedProjectItems(p);window.EngineeringPdfAnalysis?.importAnalysis?.(p.id,data.documentAnalysis);save();render();alert(data.attachmentManifest?.length?`專案已匯入；備份列有 ${data.attachmentManifest.length} 個附件，但檔案本體須另外加入。`:"備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
+    $("import-project").addEventListener("change",async e=>{try{const data=JSON.parse(await e.target.files[0].text());if(![1,2,3].includes(data.version)||!data.project?.name||typeof data.project.items!=="object")throw new Error("格式不符");const p={...data.project,id:uid(),updatedAt:new Date().toISOString()};projects[p.id]=p;activeId=p.id;seedProjectItems(p);save();window.EngineeringPdfAnalysis?.importAnalysis?.(p.id,data.documentAnalysis);render();alert(data.attachmentManifest?.length?`專案已匯入；備份列有 ${data.attachmentManifest.length} 個附件，但檔案本體須另外加入。`:"備份已匯入為新專案，原資料保留。");}catch(err){alert(`無法匯入：${err.message}`);}finally{e.target.value="";}});
     $("delete-project").addEventListener("click",async()=>{if(Object.keys(projects).length<=1)return alert("至少保留一個專案；可新增空白專案後再刪除。");if(!confirm(`確定刪除「${current().name}」及其本機附件？請先備份，刪除後無法復原。`))return;const removing=activeId;delete projects[activeId];activeId=Object.keys(projects)[0];window.EngineeringPdfAnalysis?.removeAnalysis?.(removing);save();await deleteProjectAttachments(removing).catch(()=>{});render();});
   }
   ensureProject(tenderData());
