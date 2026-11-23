@@ -21,7 +21,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2312382f'/%3E%3Cpath d='M28 25h44v55H28z' fill='%23f4f0e7'/%3E%3Cpath d='M37 41h26M37 53h26M37 65h17' stroke='%23f26a3d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.svg">
-<link rel="stylesheet" href="styles.css?v=202611230732-opportunity-1">
+<link rel="stylesheet" href="styles.css?v=20261123-quick-discovery-1">
 </head>
 <body>
 <a class="skip-link" href="#results-heading">跳到搜尋結果</a>
@@ -73,6 +73,22 @@
       <article><span>今日新公告</span><strong id="stat-today">—</strong><small>件</small></article>
       <article class="planning-stat"><span>至少剩 2 週</span><strong id="stat-urgent">—</strong><small>件</small></article>
       <article><span>工程類案件</span><strong id="stat-engineering">—</strong><small>件</small></article>
+    </section>
+
+    <section class="quick-nav" aria-labelledby="quick-nav-heading">
+      <div class="quick-nav-heading">
+        <div><p class="section-kicker">QUICK DISCOVERY</p><h2 id="quick-nav-heading">快速找案</h2><p>從常用條件切入，點選後直接查看符合的標案。</p></div>
+      </div>
+      <div class="quick-nav-grid">
+        <details class="quick-nav-group"><summary>📍 地區導航</summary><div id="quick-nav-region" class="quick-nav-options"></div></details>
+        <details class="quick-nav-group"><summary>💰 預算範圍</summary><div id="quick-nav-budget" class="quick-nav-options"></div></details>
+        <details class="quick-nav-group"><summary>📅 公告日期</summary><div id="quick-nav-date" class="quick-nav-options"></div></details>
+        <input id="f-announcement-day" type="hidden">
+        <details class="quick-nav-group"><summary>🔥 熱門關鍵字</summary><div id="quick-nav-keyword" class="quick-nav-options"></div></details>
+        <details class="quick-nav-group"><summary>🧰 採購類別</summary><div id="quick-nav-category" class="quick-nav-options"></div></details>
+        <details class="quick-nav-group"><summary>🏛️ 熱門機關</summary><div id="quick-nav-agency" class="quick-nav-options"></div></details>
+      </div>
+      <p class="quick-nav-note">件數依目前可投標資料計算；地區由公告資料推定，投標前請核對官方公告。</p>
     </section>
 
     <div id="sync-banner" class="sync-banner" role="status" hidden></div>
@@ -191,7 +207,7 @@
             <option value="budget-desc">預算由高到低</option>
           </select>
         </div>
-        <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></select></div>
+        <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><optgroup label="常用預算區間"><option value="0:500000">50 萬以下</option><option value="500000:1000000">50～100 萬</option><option value="1000000:2500000">100～250 萬</option><option value="2500000:5000000">250～500 萬</option><option value="5000000:10000000">500～1,000 萬</option><option value="10000000:50000000">1,000～5,000 萬</option><option value="50000000:100000000">5,000 萬～1 億</option><option value="100000000:1000000000">1 億～10 億</option><option value="1000000000:">10 億以上</option><option value="missing">未提供金額</option></optgroup><optgroup label="舊版上限篩選"><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></optgroup></select></div>
       </div>
       <div class="filter-footer">
         <button id="btn-my-source" class="btn" type="button">我的案源：至少剩 2 週</button>
@@ -244,7 +260,7 @@
 </footer>
 
 <noscript><div class="no-script">此網站需要 JavaScript 才能搜尋標案，請啟用後重新整理。</div></noscript>
-<script src="app.js?v=20261123-analysis-linkback-1"></script>
+<script src="app.js?v=20261123-quick-discovery-1"></script>
 <script src="pwa.js?v=20261117-pwa-1"></script>
 </body>
 </html>
