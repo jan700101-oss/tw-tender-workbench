@@ -60,6 +60,7 @@ function saveAnalysis(projectId, analysis) {
   const all = loadAnalyses();
   all[projectId] = analysis;
   localStorage.setItem(ANALYSIS_KEY, JSON.stringify(all));
+  window.dispatchEvent(new CustomEvent("engineering-analysis-saved", {detail:{projectId,analysis}}));
 }
 function removeAnalysis(projectId) {
   const all = loadAnalyses();
