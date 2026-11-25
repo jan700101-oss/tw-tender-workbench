@@ -112,6 +112,7 @@ let duplicateCount=0;
 for(const row of records){const key=row.officialPk || `${row.agency}|${row.caseNo}`;if(uniqueMap.has(key)){duplicateCount++;continue;}uniqueMap.set(key,row);}
 const unique=[...uniqueMap.values()].sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
 const consistencyPassed=stats.sourceRows===total && confirmedTotal===total;
+if(!consistencyPassed) throw new Error(`Official list remained unstable after ${attempt} scans: rows=${stats.sourceRows}/${total}, confirmed=${confirmedTotal}. Previous verified data will be kept.`);
 const payload={version:6,generatedAt:new Date().toISOString(),officialResultCount:total,confirmedOfficialResultCount:confirmedTotal,consistencyPassed,scanAttempts:attempt,rawRowCount:stats.sourceRows,parsedRowCount:records.length,expiredRowCount:stats.expiredRows,unparsedRowCount:stats.unparsedRows,malformedRowCount:stats.malformedRows,duplicateCount,count:unique.length,records:unique,source:firstUrl,pageKey,perPage,parseStats:stats};
 mkdirSync(dirname(OUT),{recursive:true}); writeFileSync(`${OUT}.tmp`,JSON.stringify(payload)); renameSync(`${OUT}.tmp`,OUT);
 console.log(`Saved ${unique.length}/${total} currently open tenders; confirmed=${confirmedTotal}, scans=${attempt}, source rows=${stats.sourceRows}, parsed=${records.length}, expired=${stats.expiredRows}, unparsed=${stats.unparsedRows}, malformed=${stats.malformedRows}, duplicates=${duplicateCount}.`);
