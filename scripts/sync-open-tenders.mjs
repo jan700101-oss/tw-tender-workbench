@@ -38,22 +38,35 @@ function parseTitle(cell) {
   if (m) try { return JSON.parse(m[1]); } catch {}
   return text(cell).replace(/^\S+\s+\(更正公告\)\s*/,"").trim();
 }
-function parseRows(html, sourcePage) {
+function parseRows(html, sourcePage, stats) {
   const rows=[];
-  for (const match of html.matchAll(/<tr class="tb_b[23]">([\s\S]*?)<\/tr>/g)) {
-    const cells=[...match[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m=>m[1]);
-    if (cells.length < 10) continue;
-    const caseNo=text(cells[2]).replace(/\s*\(更正公告\)[\s\S]*$/,"").split(" ")[0];
+  for (const match of html.matchAll(/<tr class="tb_b[23]">([\\s\\S]*?)<\\/tr>/g)) {
+    stats.sourceRows++;
+    const cells=[...match[1].matchAll(/<td[^>]*>([\\s\\S]*?)<\\/td>/g)].map(m=>m[1]);
+    if (cells.length < 10) { stats.malformedRows++; continue; }
+    const caseNo=text(cells[2]).replace(/\\s*\\(更正公告\\)[\\s\\S]*$/,"").split(" ")[0];
     const title=parseTitle(cells[2]);
     const announce=rocDate(text(cells[6]));
     const deadline=rocDate(text(cells[7]));
-    const href=/href="([^"]*\/prkms\/urlSelector\/common\/tpam\?pk=[^"]+)"/.exec(cells[2])?.[1] || "";
+    const href=/href="([^"]*\\/prkms\\/urlSelector\\/common\\/tpam\\?pk=[^"]+)"/.exec(cells[2])?.[1] || "";
+    let officialPk="";
+    try { officialPk=new URL(decode(href),ORIGIN).searchParams.get("pk") || ""; } catch {}
     const transmissionCount=text(cells[3]);
-    if (!caseNo || !title || !announce || !deadline || deadline < taipeiToday) continue;
     const agency=text(cells[1]);
+    if (!caseNo || !title || !agency || !announce || !deadline || !officialPk) {
+      stats.unparsedRows++;
+      if (!caseNo) stats.missingCaseNo++;
+      if (!title) stats.missingTitle++;
+      if (!agency) stats.missingAgency++;
+      if (!announce) stats.missingAnnouncementDate++;
+      if (!deadline) stats.missingDeadline++;
+      if (!officialPk) stats.missingOfficialPk++;
+      continue;
+    }
+    if (deadline < taipeiToday) { stats.expiredRows++; continue; }
     rows.push({ kind:"tender", periodStart:announce, periodEnd:announce, deadline, agency, caseNo, title,
       method:text(cells[4]), attr:text(cells[5]), region:regions.find(r=>`${agency} ${title}`.includes(r)) || "地區未明", sourceFile:"政府採購網等標期內查詢",
-      officialUrl:href ? new URL(decode(href),ORIGIN).href : "", budget:text(cells[8]), transmissionCount, sourcePage });
+      officialPk, officialUrl:new URL(decode(href),ORIGIN).href, budget:text(cells[8]), transmissionCount, sourcePage });
   }
   return rows;
 }
@@ -71,7 +84,7 @@ console.log(`Official open-period result: ${total} records, ${pages} pages`);
 for(let page=2;page<=pages;page++) {
   const p=new URLSearchParams(params); p.set(pageKey || "d-49738-p",String(page));
   const html=await fetchHtml(`${SEARCH}?${p}`);
-  records.push(...parseRows(html,page));
+  records.push(...parseRows(html,page,stats));
   if(page%10===0 || page===pages) console.log(`Fetched page ${page}/${pages}`);
   await new Promise(r=>setTimeout(r,300));
 }
@@ -79,4 +92,4 @@ const unique=[...new Map(records.map(r=>[`${r.agency}|${r.caseNo}`,r])).values()
   .sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
 const payload={version:4,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl,pageKey};
 mkdirSync(dirname(OUT),{recursive:true}); writeFileSync(`${OUT}.tmp`,JSON.stringify(payload)); renameSync(`${OUT}.tmp`,OUT);
-console.log(`Saved ${unique.length} currently open tenders.`);
+console.log(`Saved ${unique.length}/${total} currently open tenders; source rows=${stats.sourceRows}, parsed=${records.length}, expired=${stats.expiredRows}, unparsed=${stats.unparsedRows}, malformed=${stats.malformedRows}, duplicates=${duplicateCount}.`);
