@@ -476,6 +476,7 @@
       els.open.checked = false;
       s = getFilterState();
     }
+    const caseNeedle = String(s.caseNumber || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
     const today = todayIso();
     if (s.deadlineWindow === "0-0") els.resultsHeading.textContent = "今天截止案件（僅供核對）";
     else if (s.deadlineWindow === "1-1") els.resultsHeading.textContent = "明天截止案件（剩 1 天）";
@@ -490,16 +491,22 @@
     } else if (s.openOnly) {
       source = openTenders;
     } else {
-      const months = monthsForState(s);
-      const missing = months.filter((m) => !monthCache.has(m));
-      if (missing.length) {
-        els.count.textContent = "載入資料中…";
-        try { await Promise.all(missing.map(loadMonth)); }
-        catch (error) { if (token === loadToken) { els.results.textContent = ""; els.count.textContent = ""; showEmpty(error.message); } return; }
-        if (token !== loadToken) return; // 已有更新的查詢
+      const hasCurrentMatch = Boolean(caseNeedle) && openTenders.some((r) =>
+        String(r.caseNo || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "").includes(caseNeedle));
+      if (hasCurrentMatch) {
+        source = openTenders;
+      } else {
+        const months = monthsForState(s);
+        const missing = months.filter((m) => !monthCache.has(m));
+        if (missing.length) {
+          els.count.textContent = "載入資料中…";
+          try { await Promise.all(missing.map(loadMonth)); }
+          catch (error) { if (token === loadToken) { els.results.textContent = ""; els.count.textContent = ""; showEmpty(error.message); } return; }
+          if (token !== loadToken) return; // 已有更新的查詢
+        }
+        source = [];
+        for (const m of months) source.push(...(monthCache.get(m) || []));
       }
-      source = [];
-      for (const m of months) source.push(...(monthCache.get(m) || []));
     }
 
     if (s.caseNumber && currentTab !== "fav") {
@@ -539,9 +546,8 @@
       if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
       if (s.caseNumber) {
-        const needle = s.caseNumber.toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
         const caseValue = String(r.caseNo || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
-        if (!needle || !caseValue.includes(needle)) return false;
+        if (!caseNeedle || !caseValue.includes(caseNeedle)) return false;
       }
       if (s.announcementDay && r.periodStart !== s.announcementDay) return false;
       if (minDate && r.periodEnd < minDate) return false;
