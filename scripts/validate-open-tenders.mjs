@@ -5,23 +5,31 @@ import { fileURLToPath } from "node:url";
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const DATA=resolve(ROOT,"docs/data/open-tenders.json"), REPORT=resolve(ROOT,"docs/data/open-tenders-validation.json");
 const payload=JSON.parse(readFileSync(DATA,"utf8")), records=payload.records||[];
-const today=new Date(Date.now()+28800000).toISOString().slice(0,10), errors=[], keys=new Set();
+const today=new Date(Date.now()+28800000).toISOString().slice(0,10), errors=[], keys=new Set(), officialKeys=new Set();
 const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 const generated = Date.parse(payload.generatedAt);
 if (!/^20\d{2}-/.test(payload.generatedAt || "") || !Number.isFinite(generated) || generated > Date.now()+300000 || generated < Date.now()-86400000) errors.push("invalid or stale generatedAt");
 if (!records.length) errors.push("no open tenders");
+if (payload.rawRowCount !== payload.officialResultCount) errors.push(`official row count mismatch: parsed source rows ${payload.rawRowCount ?? "missing"}/${payload.officialResultCount}`);
+const accountedRows=(payload.count||0)+(payload.expiredRowCount||0)+(payload.unparsedRowCount||0)+(payload.duplicateCount||0);
+if (accountedRows !== payload.rawRowCount) errors.push(`row accounting mismatch: ${accountedRows}/${payload.rawRowCount}`);
+if ((payload.unparsedRowCount||0)>0) errors.push(`official rows could not be parsed: ${payload.unparsedRowCount} ${JSON.stringify(payload.parseStats||{})}`);
+if ((payload.malformedRowCount||0)>0) errors.push(`official rows had malformed cells: ${payload.malformedRowCount}`);
+if ((payload.duplicateCount||0)>0) errors.push(`duplicate official rows detected: ${payload.duplicateCount}`);
+if (payload.perPage !== 100) errors.push(`unexpected official page size: ${payload.perPage}`);
 const latest = records.reduce((date,r) => r.periodStart > date ? r.periodStart : date, "");
 if (!validDate(latest) || Math.abs(Date.parse(latest)-Date.parse(today)) > 7*86400000) errors.push("latest announcement outside seven-day window");
 if (/\uFFFD|Ã.|Â[\u0080-\u00ff]|銝|嚙踝蕭/.test(JSON.stringify(payload))) errors.push("replacement character or suspected mojibake");
 for(const [i,r] of records.entries()){
-  for(const field of ["periodStart","deadline","agency","caseNo","title","method","attr","officialUrl","transmissionCount","sourcePage"])
+  for(const field of ["periodStart","deadline","agency","caseNo","title","method","attr","officialPk","officialUrl","transmissionCount","sourcePage"])
     if(!String(r[field]||"").trim())errors.push(`row ${i+1}: missing ${field}`);
   if(!/^\d+$/.test(String(r.transmissionCount||"")))errors.push(`row ${i+1}: invalid transmissionCount`);
   if(!validDate(r.deadline)||r.deadline<today)errors.push(`row ${i+1}: invalid/expired deadline ${r.deadline}`);
   if(!validDate(r.periodStart))errors.push(`row ${i+1}: invalid announcement date`);
   try { const url = new URL(r.officialUrl); if(url.origin !== "https://web.pcc.gov.tw" || url.pathname !== "/prkms/urlSelector/common/tpam" || !url.searchParams.get("pk")) throw new Error(); }
   catch { errors.push(`row ${i+1}: invalid official URL`); }
-  const key=`${r.agency}|${r.caseNo}`;if(keys.has(key))errors.push(`row ${i+1}: duplicate ${key}`);keys.add(key);
+  const key=`${r.agency}|${r.caseNo}`;if(keys.has(key))errors.push(`row ${i+1}: duplicate case ${key}`);keys.add(key);
+  if(officialKeys.has(r.officialPk))errors.push(`row ${i+1}: duplicate officialPk ${r.officialPk}`);officialKeys.add(r.officialPk);
 }
 if(records.length!==payload.count)errors.push(`count mismatch ${records.length}/${payload.count}`);
 if(records.length<Math.floor((payload.officialResultCount||0)*.8))errors.push("parsed fewer than 80% of official rows");
@@ -42,7 +50,7 @@ async function worker(){while(cursor<pages.length){const[page,items]=pages[curso
  checked.push({caseNumber:r.caseNo,sourcePage:page,...checks});if(Object.values(checks).some(v=>!v))errors.push(`official row mismatch ${r.caseNo}: ${JSON.stringify(checks)}`);}
 }catch(e){errors.push(`official page unavailable ${page}: ${e.message}`);}}}
 await Promise.all(Array.from({length:4},worker));
-const passedRows=checked.filter(x=>x.caseNo&&x.title&&x.deadline&&x.link).length;
+const passedRows=checked.filter(x=>x.caseNumber&&x.title&&x.deadline&&x.link).length;
 const report={version:3,passed:errors.length===0,validatedAt:new Date().toISOString(),today,source:payload.source,
  officialResultCount:payload.officialResultCount,recordCount:records.length,expiredCount:records.filter(r=>r.deadline<today).length,uniqueCount:keys.size,
  officialRowsRequested:samples.length,officialRowsPassed:passedRows,officialPagesChecked:pages.length,errors:errors.slice(0,100),samples:checked};
