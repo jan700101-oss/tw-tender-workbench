@@ -45,7 +45,7 @@ try {
 
     $payload = Get-Content -LiteralPath $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $report = Get-Content -LiteralPath $validationPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if (-not $report.passed) { throw 'Data validation failed' }
+    if (-not $report.passed) { throw ('Data validation failed: ' + (@($report.errors) -join '; ')) }
     if ([int]$payload.count -le 0 -or @($payload.records).Count -ne [int]$payload.count) {
         throw 'Record count is zero or inconsistent'
     }
