@@ -298,7 +298,7 @@
     const tomorrowRows = current.filter((r) => r.deadline === addDays(today, 1));
     els.statOpen.textContent = numberFormat.format(current.length);
     els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
-    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= addDays(today, 4)).length);
+    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= addDays(today, 5)).length);
     els.deadlineToday.textContent = numberFormat.format(todayRows.length);
     els.deadlineTomorrow.textContent = numberFormat.format(tomorrowRows.length);
     els.urgentSummary.textContent = `${numberFormat.format(todayRows.length + tomorrowRows.length)} 件`;
@@ -311,7 +311,7 @@
 
   function renderDeadlineGroups(current, today) {
     const groups = [
-      { window: "0-4", title: "5 天內截止提醒", test: r => r.deadline <= addDays(today, 4), note: "包含今天截止；請先核對官方送件時間" },
+      { window: "0-5", title: "5 天內截止提醒", test: r => r.deadline <= addDays(today, 4), note: "包含今天截止；請先核對官方送件時間" },
       { window: "5-plus", title: "剩 5 天以上", test: r => r.deadline >= addDays(today, 5), note: "目前仍未截止，依截止日排序" },
     ];
     $("deadline-groups").innerHTML = groups.map(g => {
@@ -480,7 +480,7 @@
     const caseNeedle = String(s.caseNumber || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
     const today = todayIso();
     if (s.deadlineWindow === "0-0") els.resultsHeading.textContent = "今天截止案件（僅供核對）";
-    else if (s.deadlineWindow === "0-4") els.resultsHeading.textContent = "5 天內截止提醒";
+    else if (s.deadlineWindow === "0-5") els.resultsHeading.textContent = "5 天內截止提醒";
     else if (s.deadlineWindow === "5-plus") els.resultsHeading.textContent = "5 天以上可準備案件";
     else if (s.deadlineWindow === "1-1") els.resultsHeading.textContent = "明天截止案件（剩 1 天）";
     else if (s.retender) els.resultsHeading.textContent = s.retender === "3-plus" ? "第 3 次以上招標觀察" : "重招觀察案件";
