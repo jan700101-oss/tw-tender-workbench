@@ -1,4 +1,4 @@
-const CACHE = "tender-workbench-20261125-open-all-4";
+const CACHE = "tender-workbench-20261125-open-all-5";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "engineering.html", "engineering.css", "engineering.js", "engineering-analysis.js", "vendor/pdfjs/pdf.min.mjs", "vendor/pdfjs/pdf.worker.min.mjs", "pwa.js", "manifest.webmanifest", "app-icon.svg"];
 
 self.addEventListener("install", event => {
