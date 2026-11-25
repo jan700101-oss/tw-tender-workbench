@@ -343,7 +343,7 @@
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
         els.banner.textContent = `官方查詢 ${numberFormat.format(openMeta.officialResultCount || 0)} 筆，本站有效 ${numberFormat.format(openMeta.count || 0)} 筆，差 ${numberFormat.format(Math.abs((openMeta.officialResultCount || 0) - (openMeta.count || 0)))} 筆；同步完整性未確認，請以官方清單為準。`;
-      else if (staleHours > 48) {
+      } else if (staleHours > 48) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner danger";
         els.banner.textContent = "可投標案源超過 48 小時未更新，資料可能過期，請先以政府電子採購網公告為準。";
