@@ -634,7 +634,8 @@
     if (days < 0) return { date: r.deadline, label: `已截止 ${Math.abs(days)} 天`, cls: "closed" };
     if (days === 0) return { date: r.deadline, label: "今天截止", cls: "urgent" };
     if (days >= 14 && days <= 21) return { date: r.deadline, label: `剩 ${days} 天 · 2～3 週準備期`, cls: "planning" };
-    return { date: r.deadline, label: `剩 ${days} 天`, cls: days <= 3 ? "urgent" : "" };
+    if (days <= 5) return { date: r.deadline, label: `剩 ${days} 天 · 優先處理`, cls: "urgent" };
+    return { date: r.deadline, label: `剩 ${days} 天`, cls: "" };
   }
 
   function escapeHtml(s) {
