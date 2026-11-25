@@ -40,15 +40,15 @@ function parseTitle(cell) {
 }
 function parseRows(html, sourcePage, stats) {
   const rows=[];
-  for (const match of html.matchAll(/<tr class="tb_b[23]">([\\s\\S]*?)<\\/tr>/g)) {
+  for (const match of html.matchAll(/<tr class="tb_b[23]">([\s\S]*?)<\/tr>/g)) {
     stats.sourceRows++;
-    const cells=[...match[1].matchAll(/<td[^>]*>([\\s\\S]*?)<\\/td>/g)].map(m=>m[1]);
+    const cells=[...match[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m=>m[1]);
     if (cells.length < 10) { stats.malformedRows++; continue; }
-    const caseNo=text(cells[2]).replace(/\\s*\\(更正公告\\)[\\s\\S]*$/,"").split(" ")[0];
+    const caseNo=text(cells[2]).replace(/\s*\(更正公告\)[\s\S]*$/,"").split(" ")[0];
     const title=parseTitle(cells[2]);
     const announce=rocDate(text(cells[6]));
     const deadline=rocDate(text(cells[7]));
-    const href=/href="([^"]*\\/prkms\\/urlSelector\\/common\\/tpam\\?pk=[^"]+)"/.exec(cells[2])?.[1] || "";
+    const href=/href="([^"]*\/prkms\/urlSelector\/common\/tpam\?pk=[^"]+)"/.exec(cells[2])?.[1] || "";
     let officialPk="";
     try { officialPk=new URL(decode(href),ORIGIN).searchParams.get("pk") || ""; } catch {}
     const transmissionCount=text(cells[3]);
@@ -77,10 +77,11 @@ const firstUrl=`${SEARCH}?${params}`;
 const first=await fetchHtml(firstUrl);
 const total=Number(/共有<span class="red">\s*([\d,]+)\s*<\/span>筆資料/.exec(first)?.[1]?.replaceAll(",","") || 0);
 const pageKey=/[?&](d-\d+-p)=2/.exec(first)?.[1];
-const perPage=50;
+const perPage=Number(params.get("pageSize")) || 100;
 const pages=Math.max(1,Math.ceil(total/perPage));
-const records=parseRows(first,1);
-console.log(`Official open-period result: ${total} records, ${pages} pages`);
+const stats={sourceRows:0,malformedRows:0,unparsedRows:0,expiredRows:0,missingCaseNo:0,missingTitle:0,missingAgency:0,missingAnnouncementDate:0,missingDeadline:0,missingOfficialPk:0};
+const records=parseRows(first,1,stats);
+console.log(`Official open-period result: ${total} records, ${pages} pages, ${perPage} rows/page`);
 for(let page=2;page<=pages;page++) {
   const p=new URLSearchParams(params); p.set(pageKey || "d-49738-p",String(page));
   const html=await fetchHtml(`${SEARCH}?${p}`);
@@ -88,8 +89,10 @@ for(let page=2;page<=pages;page++) {
   if(page%10===0 || page===pages) console.log(`Fetched page ${page}/${pages}`);
   await new Promise(r=>setTimeout(r,300));
 }
-const unique=[...new Map(records.map(r=>[`${r.agency}|${r.caseNo}`,r])).values()]
-  .sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
-const payload={version:4,generatedAt:new Date().toISOString(),officialResultCount:total,count:unique.length,records:unique,source:firstUrl,pageKey};
+const uniqueMap=new Map();
+let duplicateCount=0;
+for(const row of records){const key=row.officialPk || `${row.agency}|${row.caseNo}`;if(uniqueMap.has(key)){duplicateCount++;continue;}uniqueMap.set(key,row);}
+const unique=[...uniqueMap.values()].sort((a,b)=>a.deadline.localeCompare(b.deadline)||b.periodStart.localeCompare(a.periodStart));
+const payload={version:5,generatedAt:new Date().toISOString(),officialResultCount:total,rawRowCount:stats.sourceRows,parsedRowCount:records.length,expiredRowCount:stats.expiredRows,unparsedRowCount:stats.unparsedRows,malformedRowCount:stats.malformedRows,duplicateCount,count:unique.length,records:unique,source:firstUrl,pageKey,perPage,parseStats:stats};
 mkdirSync(dirname(OUT),{recursive:true}); writeFileSync(`${OUT}.tmp`,JSON.stringify(payload)); renameSync(`${OUT}.tmp`,OUT);
 console.log(`Saved ${unique.length}/${total} currently open tenders; source rows=${stats.sourceRows}, parsed=${records.length}, expired=${stats.expiredRows}, unparsed=${stats.unparsedRows}, malformed=${stats.malformedRows}, duplicates=${duplicateCount}.`);
