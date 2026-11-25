@@ -36,6 +36,7 @@
     qualification: $("f-qualification"),
     method: $("f-method"),
     region: $("f-region"),
+    regionIncludeUnknown: $("f-region-unknown"),
     agency: $("f-agency"),
     caseNumber: $("f-case-number"),
     range: $("f-range"),
@@ -297,7 +298,7 @@
     const tomorrowRows = current.filter((r) => r.deadline === addDays(today, 1));
     els.statOpen.textContent = numberFormat.format(current.length);
     els.statToday.textContent = numberFormat.format(current.filter((r) => r.periodStart === today).length);
-    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline >= addDays(today, 14)).length);
+    els.statUrgent.textContent = numberFormat.format(current.filter((r) => r.deadline <= addDays(today, 4)).length);
     els.deadlineToday.textContent = numberFormat.format(todayRows.length);
     els.deadlineTomorrow.textContent = numberFormat.format(tomorrowRows.length);
     els.urgentSummary.textContent = `${numberFormat.format(todayRows.length + tomorrowRows.length)} 件`;
@@ -309,24 +310,18 @@
   }
 
   function renderDeadlineGroups(current, today) {
-    const displayed = new Set();
     const groups = [
-      { profile: "my", window: "14-plus", title: "我的案源 · 至少 2 週", test: r => isMyOpportunity(r) && r.deadline >= addDays(today, 14), note: "彰中投雲室內工程，優先準備" },
-      { retender: "2-plus", window: "2-plus", title: "重招觀察", test: r => retenderInfo(r).round >= 2 && r.deadline >= addDays(today, 2), note: "案名或官方狀態顯示重招，原因仍須核對" },
-      { profile: "", window: "14-plus", title: "其他可準備案件", test: r => !isMyOpportunity(r) && r.deadline >= addDays(today, 14), note: "至少剩 14 天，不含我的案源" },
+      { window: "0-4", title: "5 天內截止提醒", test: r => r.deadline <= addDays(today, 4), note: "包含今天截止；請先核對官方送件時間" },
+      { window: "5-plus", title: "剩 5 天以上", test: r => r.deadline >= addDays(today, 5), note: "目前仍未截止，依截止日排序" },
     ];
     $("deadline-groups").innerHTML = groups.map(g => {
-      const allRows = current.filter(g.test).sort((a, b) => {
-        if (g.retender) return retenderInfo(b).round - retenderInfo(a).round || a.deadline.localeCompare(b.deadline);
-        return a.deadline.localeCompare(b.deadline);
-      });
-      const rows = allRows.filter(r => !displayed.has(recordKey(r)));
-      rows.slice(0, 3).forEach(r => displayed.add(recordKey(r)));
-      return `<article class="deadline-group"><button type="button" class="deadline-group-select" data-window="${g.window}" data-profile="${g.profile ?? ""}" data-retender="${g.retender || ""}"><span>${g.title}</span><strong>${numberFormat.format(allRows.length)} 件</strong><small>${g.note} · 查看全部 →</small></button><ul>${rows.slice(0, 3).map(r => `<li><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a><small>${escapeHtml(r.agency)}</small><span class="deadline-days ${deadlineInfo(r, today).cls}">${escapeHtml(deadlineInfo(r, today).label)}</span></li>`).join("") || "<li>目前沒有符合的案件</li>"}</ul></article>`;
+      const allRows = current.filter(g.test).sort((a,b) => a.deadline.localeCompare(b.deadline));
+      const rows = allRows.slice(0,3);
+      return `<article class="deadline-group"><button type="button" class="deadline-group-select" data-window="${g.window}" data-profile=""><span>${g.title}</span><strong>${numberFormat.format(allRows.length)} 件</strong><small>${g.note} · 查看清單 →</small></button><ul>${rows.map(r => `<li><a href="${escapeHtml(officialSearchUrl(r))}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a><small>${escapeHtml(r.agency)} · ${escapeHtml(r.region || "地區未明")}</small><span class="deadline-days ${deadlineInfo(r,today).cls}">${escapeHtml(deadlineInfo(r,today).label)}</span></li>`).join("") || "<li>目前沒有符合的案件</li>"}</ul></article>`;
     }).join("");
     $("deadline-groups").querySelectorAll("[data-window]").forEach(button => {
       button.addEventListener("click", () => {
-        setFilterState({ profile: button.dataset.profile, retender: button.dataset.retender, deadlineWindow: button.dataset.window, openOnly: true, sort: "deadline-asc" });
+        setFilterState({ profile: "", deadlineWindow: button.dataset.window, openOnly: true, sort: "deadline-asc" });
         switchTab("all");
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -336,7 +331,7 @@
   function renderSyncStatus() {
     if (openMeta) {
       els.headerStatus.textContent = `更新 ${fmtTime(openMeta.generatedAt)}`;
-      els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方查詢 ${openMeta.officialResultCount} 筆 · 本站有效案件 ${openMeta.count} 筆 · 官方列表抽驗 ${validation?.officialRowsPassed || 0}/${validation?.officialRowsRequested || 0}`;
+      els.footerSync.textContent = `可投標案源更新：${fmtTime(openMeta.generatedAt)}（台北時間） · 官方清單 ${numberFormat.format(openMeta.officialResultCount || 0)} 筆 · 本站有效 ${numberFormat.format(openMeta.count || 0)} 筆 · 筆數差 ${numberFormat.format(Math.abs((openMeta.officialResultCount || 0) - (openMeta.count || 0)))} · 官方抽驗 ${validation?.officialRowsPassed || 0}/${validation?.officialRowsRequested || 0}`;
       const staleHours = (Date.now() - new Date(openMeta.generatedAt).getTime()) / 3600000;
       const histAttempt = meta && meta.lastAttempt;
       const histFailed = histAttempt && histAttempt.status !== "success";
@@ -344,7 +339,11 @@
         els.banner.hidden = false;
         els.banner.className = "sync-banner warn";
         els.banner.textContent = "目前資料尚未通過官方公告驗證，請勿作為投標依據。";
-      } else if (staleHours > 48) {
+      } else if (openMeta.officialResultCount !== openMeta.count) {
+        els.banner.hidden = false;
+        els.banner.className = "sync-banner warn";
+        els.banner.textContent = `官方查詢 ${numberFormat.format(openMeta.officialResultCount || 0)} 筆，本站有效 ${numberFormat.format(openMeta.count || 0)} 筆，差 ${numberFormat.format(Math.abs((openMeta.officialResultCount || 0) - (openMeta.count || 0)))} 筆；同步完整性未確認，請以官方清單為準。`;
+      else if (staleHours > 48) {
         els.banner.hidden = false;
         els.banner.className = "sync-banner danger";
         els.banner.textContent = "可投標案源超過 48 小時未更新，資料可能過期，請先以政府電子採購網公告為準。";
@@ -402,6 +401,7 @@
       qualification: els.qualification.value,
       method: els.method.value,
       region: els.region.value,
+      regionIncludeUnknown: els.regionIncludeUnknown.checked,
       agency: els.agency.value.trim(),
       caseNumber: els.caseNumber.value.trim(),
       range: els.range.value,
@@ -423,6 +423,7 @@
     els.qualification.value = s.qualification || "";
     els.method.value = s.method || "";
     els.region.value = s.region || "";
+    els.regionIncludeUnknown.checked = s.regionIncludeUnknown !== false;
     els.agency.value = s.agency || "";
     els.caseNumber.value = s.caseNumber || "";
     els.range.value = s.range || "3";
@@ -479,9 +480,11 @@
     const caseNeedle = String(s.caseNumber || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
     const today = todayIso();
     if (s.deadlineWindow === "0-0") els.resultsHeading.textContent = "今天截止案件（僅供核對）";
+    else if (s.deadlineWindow === "0-4") els.resultsHeading.textContent = "5 天內截止提醒";
+    else if (s.deadlineWindow === "5-plus") els.resultsHeading.textContent = "5 天以上可準備案件";
     else if (s.deadlineWindow === "1-1") els.resultsHeading.textContent = "明天截止案件（剩 1 天）";
     else if (s.retender) els.resultsHeading.textContent = s.retender === "3-plus" ? "第 3 次以上招標觀察" : "重招觀察案件";
-    else if (s.profile === "my") els.resultsHeading.textContent = "我的案源（至少剩 2 週）";
+    else if (s.profile === "my") els.resultsHeading.textContent = "我的案源（目前未截止）";
     else if (s.deadlineWindow === "14-plus") els.resultsHeading.textContent = "來得及準備的標案";
     else els.resultsHeading.textContent = "標案搜尋結果";
 
@@ -529,6 +532,7 @@
         const [rawMin, rawMax] = s.deadlineWindow.split("-");
         const minDays = Number(rawMin);
         const maxDays = rawMax === "plus" || s.deadlineWindow === "2-months" ? null : Number(rawMax);
+        if (s.deadlineWindow === "5-plus" && r.deadline < addDays(today, 5)) return false;
         if (s.deadlineWindow === "2-months" && r.deadline > twoMonthsAfter(today)) return false;
         if (r.deadline < addDays(today, minDays)) return false;
         if (maxDays !== null && r.deadline > addDays(today, maxDays)) return false;
@@ -543,7 +547,7 @@
       if (s.qualification && s.qualification !== "general" && group !== s.qualification) return false;
       if (s.budget && !matchesBudget(r, s.budget)) return false;
       if (s.method && r.method !== s.method) return false;
-      if (s.region && r.region !== s.region) return false;
+      if (s.region && r.region !== s.region && !(s.regionIncludeUnknown && r.region === "地區未明")) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
       if (s.caseNumber) {
         const caseValue = String(r.caseNo || "").toUpperCase().replace(/[\s\-‐‑‒–—]/g, "");
@@ -915,8 +919,8 @@
   // ---------- 事件 ----------
   function bindEvents() {
     $("btn-backup").addEventListener("click", exportBackup);
-    $("btn-my-source").addEventListener("click", () => { setFilterState({ profile: "my", deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
-    $("btn-engineering").addEventListener("click", () => { setFilterState({ profile: "", attr: "工程類", budget: "100000000", deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-my-source").addEventListener("click", () => { setFilterState({ profile: "my", deadlineWindow: "", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-engineering").addEventListener("click", () => { setFilterState({ profile: "", attr: "工程類", budget: "100000000", deadlineWindow: "", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
     document.querySelectorAll("[data-urgent-window]").forEach((button) => {
       button.addEventListener("click", () => {
         setFilterState({ profile: "", deadlineWindow: button.dataset.urgentWindow === "today" ? "0-0" : "1-1", sort: "deadline-asc", openOnly: true });
@@ -926,7 +930,7 @@
     });
     document.querySelectorAll("[data-qualification]").forEach((button) => {
       button.addEventListener("click", () => {
-        setFilterState({ profile: "", qualification: button.dataset.qualification, deadlineWindow: "14-plus", sort: "deadline-asc", openOnly: true });
+        setFilterState({ profile: "", qualification: button.dataset.qualification, deadlineWindow: "", sort: "deadline-asc", openOnly: true });
         switchTab("all");
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -939,7 +943,7 @@
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
     els.caseNumber.addEventListener("input", debounced);
-    for (const el of [els.profile, els.method, els.region, els.sort, els.budget, els.deadline, els.retender, els.open, els.start, els.end]) {
+    for (const el of [els.profile, els.method, els.region, els.regionIncludeUnknown, els.sort, els.budget, els.deadline, els.retender, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
     els.qualification.addEventListener("change", () => {
@@ -1129,7 +1133,7 @@
       els.banner.hidden = false; els.banner.className = "sync-banner warn";
       els.banner.textContent = "目前可投標資料無法載入或未通過驗證，以下改顯示歷史資料；不代表目前沒有標案。請重新整理或核對官方網站。";
     }
-    setFilterState(hasOpen ? { profile: "", deadlineWindow: "", openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
+    setFilterState(hasOpen ? { profile: "", deadlineWindow: "", regionIncludeUnknown: true, openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
     await applyFilters();
     hydrateRetenderStatuses();
   }
