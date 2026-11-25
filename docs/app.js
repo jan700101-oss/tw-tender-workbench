@@ -418,7 +418,7 @@
 
   function setFilterState(s) {
     els.q.value = s.q || "";
-    els.profile.value = s.profile ?? "my";
+    els.profile.value = s.profile ?? "";
     els.attr.value = s.attr || "";
     els.qualification.value = s.qualification || "";
     els.method.value = s.method || "";
@@ -431,7 +431,7 @@
     els.announcementDay.value = s.announcementDay || "";
     els.sort.value = s.sort || "deadline-asc";
     els.budget.value = s.budget || "";
-    els.deadline.value = s.deadlineWindow ?? "14-plus";
+    els.deadline.value = s.deadlineWindow ?? "";
     els.retender.value = s.retender || "";
     els.open.checked = s.openOnly !== false;
     els.customDates.hidden = els.range.value !== "custom";
@@ -1128,7 +1128,7 @@
       els.banner.hidden = false; els.banner.className = "sync-banner warn";
       els.banner.textContent = "目前可投標資料無法載入或未通過驗證，以下改顯示歷史資料；不代表目前沒有標案。請重新整理或核對官方網站。";
     }
-    setFilterState(hasOpen ? { profile: "my", deadlineWindow: "14-plus", openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
+    setFilterState(hasOpen ? { profile: "", deadlineWindow: "", openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
     await applyFilters();
     hydrateRetenderStatuses();
   }
