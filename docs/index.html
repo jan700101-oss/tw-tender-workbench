@@ -71,7 +71,7 @@
     <section class="snapshot" aria-label="今日標案摘要">
       <article><span>目前可投標</span><strong id="stat-open">—</strong><small>件</small></article>
       <article><span>今日新公告</span><strong id="stat-today">—</strong><small>件</small></article>
-      <article class="planning-stat"><span>至少剩 2 週</span><strong id="stat-urgent">—</strong><small>件</small></article>
+      <article class="planning-stat"><span>5 天內截止</span><strong id="stat-urgent">—</strong><small>件</small></article>
       <article><span>工程類案件</span><strong id="stat-engineering">—</strong><small>件</small></article>
     </section>
 
@@ -88,11 +88,11 @@
         <details class="quick-nav-group"><summary>🧰 採購類別</summary><div id="quick-nav-category" class="quick-nav-options"></div></details>
         <details class="quick-nav-group"><summary>🏛️ 熱門機關</summary><div id="quick-nav-agency" class="quick-nav-options"></div></details>
       </div>
-      <p class="quick-nav-note">件數依目前可投標資料計算；地區由公告資料推定，投標前請核對官方公告。</p>
+      <p class="quick-nav-note">件數依目前可投標資料計算。政府清單未提供統一履約縣市欄位；彰化等地區篩選預設一併顯示「地區未明」，避免案件因地區推定不足而消失，投標前請核對原始公告。</p>
     </section>
 
     <div id="sync-banner" class="sync-banner" role="status" hidden></div>
-    <section id="deadline-groups" class="deadline-groups" aria-label="依準備時間選標案"></section>
+    <section id="deadline-groups" class="deadline-groups" aria-label="未截止期限提醒"></section>
 
     <details id="urgent-zone" class="urgent-zone">
       <summary><span><strong>即將截止，獨立查看</strong><small>不混入主要推薦案件</small></span><span id="urgent-summary-count">—</span></summary>
@@ -192,7 +192,7 @@
             <option value="0-0">今天截止（僅供核對）</option>
             <option value="0-14">未來 2 週內截止</option>
             <option value="0-21">未來 3 週內截止</option>
-            <option value="0-4">剩不到 5 天</option>
+            <option value="0-4">5 天內截止（含今天）</option>
             <option value="2-months">未來 2 個月內截止</option>
           </select>
         </div>
@@ -215,7 +215,7 @@
         <div class="field"><label for="f-budget">預算範圍</label><select id="f-budget"><option value="">不限（含未提供）</option><optgroup label="常用預算區間"><option value="0:500000">50 萬以下</option><option value="500000:1000000">50～100 萬</option><option value="1000000:2500000">100～250 萬</option><option value="2500000:5000000">250～500 萬</option><option value="5000000:10000000">500～1,000 萬</option><option value="10000000:50000000">1,000～5,000 萬</option><option value="50000000:100000000">5,000 萬～1 億</option><option value="100000000:1000000000">1 億～10 億</option><option value="1000000000:">10 億以上</option><option value="missing">未提供金額</option></optgroup><optgroup label="舊版上限篩選"><option value="20000000">2,000 萬以下</option><option value="50000000">5,000 萬以下</option><option value="100000000">1 億以下</option></optgroup></select></div>
       </div>
       <div class="filter-footer">
-        <button id="btn-my-source" class="btn" type="button">我的案源：至少剩 2 週</button>
+        <button id="btn-my-source" class="btn" type="button">我的案源：全部未截止</button>
         <button id="btn-engineering" class="btn secondary" type="button">中小型工程：1 億以下</button>
         <label class="check"><input id="f-open" type="checkbox" checked><span>只看目前可投標案件</span></label>
         <div class="saved-actions">
