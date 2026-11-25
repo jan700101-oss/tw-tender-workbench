@@ -28,7 +28,7 @@ for(const [i,r] of records.entries()){
   if(!validDate(r.periodStart))errors.push(`row ${i+1}: invalid announcement date`);
   try { const url = new URL(r.officialUrl); if(url.origin !== "https://web.pcc.gov.tw" || url.pathname !== "/prkms/urlSelector/common/tpam" || !url.searchParams.get("pk")) throw new Error(); }
   catch { errors.push(`row ${i+1}: invalid official URL`); }
-  const key=`${r.agency}|${r.caseNo}`;if(keys.has(key))errors.push(`row ${i+1}: duplicate case ${key}`);keys.add(key);
+  const key=r.officialPk;if(keys.has(key))errors.push(`row ${i+1}: duplicate official record ${key}`);keys.add(key);
   if(officialKeys.has(r.officialPk))errors.push(`row ${i+1}: duplicate officialPk ${r.officialPk}`);officialKeys.add(r.officialPk);
 }
 if(records.length!==payload.count)errors.push(`count mismatch ${records.length}/${payload.count}`);
