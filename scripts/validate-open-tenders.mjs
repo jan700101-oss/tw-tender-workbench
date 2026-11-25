@@ -5,12 +5,14 @@ import { fileURLToPath } from "node:url";
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const DATA=resolve(ROOT,"docs/data/open-tenders.json"), REPORT=resolve(ROOT,"docs/data/open-tenders-validation.json");
 const payload=JSON.parse(readFileSync(DATA,"utf8")), records=payload.records||[];
-const today=new Date(Date.now()+28800000).toISOString().slice(0,10), errors=[], keys=new Set(), officialKeys=new Set();
+const today=new Date(Date.now()+28800000).toISOString().slice(0,10), errors=[], officialKeys=new Set();
 const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 const generated = Date.parse(payload.generatedAt);
 if (!/^20\d{2}-/.test(payload.generatedAt || "") || !Number.isFinite(generated) || generated > Date.now()+300000 || generated < Date.now()-86400000) errors.push("invalid or stale generatedAt");
 if (!records.length) errors.push("no open tenders");
+if (!payload.consistencyPassed) errors.push(`official list changed during pagination: rows=${payload.rawRowCount ?? "missing"}/${payload.officialResultCount}, confirmed=${payload.confirmedOfficialResultCount ?? "missing"}, scans=${payload.scanAttempts ?? "missing"}`);
 if (payload.rawRowCount !== payload.officialResultCount) errors.push(`official row count mismatch: parsed source rows ${payload.rawRowCount ?? "missing"}/${payload.officialResultCount}`);
+if (payload.confirmedOfficialResultCount !== payload.officialResultCount) errors.push(`official result count changed after scan: ${payload.confirmedOfficialResultCount ?? "missing"}/${payload.officialResultCount}`);
 const accountedRows=(payload.count||0)+(payload.expiredRowCount||0)+(payload.unparsedRowCount||0)+(payload.duplicateCount||0);
 if (accountedRows !== payload.rawRowCount) errors.push(`row accounting mismatch: ${accountedRows}/${payload.rawRowCount}`);
 if ((payload.unparsedRowCount||0)>0) errors.push(`official rows could not be parsed: ${payload.unparsedRowCount} ${JSON.stringify(payload.parseStats||{})}`);
@@ -28,8 +30,7 @@ for(const [i,r] of records.entries()){
   if(!validDate(r.periodStart))errors.push(`row ${i+1}: invalid announcement date`);
   try { const url = new URL(r.officialUrl); if(url.origin !== "https://web.pcc.gov.tw" || url.pathname !== "/prkms/urlSelector/common/tpam" || !url.searchParams.get("pk")) throw new Error(); }
   catch { errors.push(`row ${i+1}: invalid official URL`); }
-  const key=r.officialPk;if(keys.has(key))errors.push(`row ${i+1}: duplicate official record ${key}`);keys.add(key);
-  if(officialKeys.has(r.officialPk))errors.push(`row ${i+1}: duplicate officialPk ${r.officialPk}`);officialKeys.add(r.officialPk);
+    if(officialKeys.has(r.officialPk))errors.push(`row ${i+1}: duplicate officialPk ${r.officialPk}`);officialKeys.add(r.officialPk);
 }
 if(records.length!==payload.count)errors.push(`count mismatch ${records.length}/${payload.count}`);
 if(records.length<Math.floor((payload.officialResultCount||0)*.8))errors.push("parsed fewer than 80% of official rows");
@@ -51,8 +52,11 @@ async function worker(){while(cursor<pages.length){const[page,items]=pages[curso
 }catch(e){errors.push(`official page unavailable ${page}: ${e.message}`);}}}
 await Promise.all(Array.from({length:4},worker));
 const passedRows=checked.filter(x=>x.caseNumber&&x.title&&x.deadline&&x.link).length;
-const report={version:3,passed:errors.length===0,validatedAt:new Date().toISOString(),today,source:payload.source,
- officialResultCount:payload.officialResultCount,recordCount:records.length,expiredCount:records.filter(r=>r.deadline<today).length,uniqueCount:keys.size,
+const report={version:4,passed:errors.length===0,validatedAt:new Date().toISOString(),today,source:payload.source,
+ officialResultCount:payload.officialResultCount,confirmedOfficialResultCount:payload.confirmedOfficialResultCount,
+ consistencyPassed:payload.consistencyPassed,scanAttempts:payload.scanAttempts,rawRowCount:payload.rawRowCount,
+ parsedRowCount:payload.parsedRowCount,unparsedRowCount:payload.unparsedRowCount,malformedRowCount:payload.malformedRowCount,
+ duplicateCount:payload.duplicateCount,recordCount:records.length,expiredCount:records.filter(r=>r.deadline<today).length,uniqueCount:officialKeys.size,
  officialRowsRequested:samples.length,officialRowsPassed:passedRows,officialPagesChecked:pages.length,errors:errors.slice(0,100),samples:checked};
 writeFileSync(`${REPORT}.tmp`,JSON.stringify(report));renameSync(`${REPORT}.tmp`,REPORT);
 console.log(JSON.stringify({...report,samples:undefined},null,2));if(!report.passed)process.exit(1);
