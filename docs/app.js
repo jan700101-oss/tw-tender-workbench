@@ -700,8 +700,9 @@
       const bidStatusText = bidStatus || (reoffer.source === "title" ? `${reoffer.label} · 查官方` : "查官方招標輪次");
       const li = document.createElement("li");
       li.className = "card";
-      const regionBadge = r.region && r.region !== "地區未明"
-        ? `<span class="badge region">${escapeHtml(r.region)}（推定）</span>` : "";
+      const regionBadge = r.region === "地區未明"
+        ? `<span class="badge region unknown-region">地區未明 · 請核對公告</span>`
+        : r.region ? `<span class="badge region">${escapeHtml(r.region)}（推定）</span>` : "";
       const item = work[key];
       const tracking = item ? `<p class="tracking-note">${escapeHtml(item.stage)} · 負責人：${escapeHtml(item.owner || "待確認")} · ${item.tasks?.length || 0}/${taskLabels.length} 項完成${item.followUp ? ` · <span class="${item.followUp < today ? "overdue" : ""}">追蹤 ${escapeHtml(item.followUp)}${item.followUp < today ? "（逾期）" : ""}</span>` : " · 追蹤日期待確認"}</p>` : "";
       const qualification = qualificationGroup(r);
