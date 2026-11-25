@@ -37,6 +37,7 @@
     method: $("f-method"),
     region: $("f-region"),
     agency: $("f-agency"),
+    caseNumber: $("f-case-number"),
     range: $("f-range"),
     customDates: $("custom-dates"),
     start: $("f-start"),
@@ -402,6 +403,7 @@
       method: els.method.value,
       region: els.region.value,
       agency: els.agency.value.trim(),
+      caseNumber: els.caseNumber.value.trim(),
       range: els.range.value,
       start: els.start.value,
       end: els.end.value,
@@ -422,6 +424,7 @@
     els.method.value = s.method || "";
     els.region.value = s.region || "";
     els.agency.value = s.agency || "";
+    els.caseNumber.value = s.caseNumber || "";
     els.range.value = s.range || "3";
     els.start.value = s.start || "";
     els.end.value = s.end || "";
@@ -462,7 +465,17 @@
   async function applyFilters() {
     updateQuickNavigationState();
     const token = ++loadToken;
-    const s = getFilterState();
+    let s = getFilterState();
+    if (s.caseNumber) {
+      els.profile.value = "";
+      els.range.value = "all";
+      els.start.value = "";
+      els.end.value = "";
+      els.customDates.hidden = true;
+      els.deadline.value = "";
+      els.open.checked = false;
+      s = getFilterState();
+    }
     const today = todayIso();
     if (s.deadlineWindow === "0-0") els.resultsHeading.textContent = "今天截止案件（僅供核對）";
     else if (s.deadlineWindow === "1-1") els.resultsHeading.textContent = "明天截止案件（剩 1 天）";
@@ -519,6 +532,7 @@
       if (s.method && r.method !== s.method) return false;
       if (s.region && r.region !== s.region) return false;
       if (agencyQ && !r.agency.toLowerCase().includes(agencyQ)) return false;
+      if (s.caseNumber && !String(r.caseNo || "").toLowerCase().includes(s.caseNumber.toLowerCase())) return false;
       if (s.announcementDay && r.periodStart !== s.announcementDay) return false;
       if (minDate && r.periodEnd < minDate) return false;
       if (maxDate && r.periodStart > maxDate) return false;
@@ -907,6 +921,7 @@
     const debounced = () => { clearTimeout(timer); timer = setTimeout(applyFilters, 150); };
     els.q.addEventListener("input", debounced);
     els.agency.addEventListener("input", debounced);
+    els.caseNumber.addEventListener("input", debounced);
     for (const el of [els.profile, els.method, els.region, els.sort, els.budget, els.deadline, els.retender, els.open, els.start, els.end]) {
       el.addEventListener("change", applyFilters);
     }
