@@ -278,7 +278,7 @@
     renderQuickNavChips("quick-nav-agency",agencyItems,"agency");
   }
   function applyQuickNavigation(type,value) {
-    const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-asc",budget:"",deadlineWindow:"",retender:"",openOnly:true};
+    const next={profile:"",attr:"",qualification:"",method:"",region:"",agency:"",range:"3",start:"",end:"",sort:"deadline-desc",budget:"",deadlineWindow:"",retender:"",openOnly:true};
     if(type==="region")next.region=value;
     else if(type==="budget")next.budget=value;
     else if(type==="date"){next.announcementDay=value;next.deadlineWindow="";}
@@ -430,7 +430,7 @@
     els.start.value = s.start || "";
     els.end.value = s.end || "";
     els.announcementDay.value = s.announcementDay || "";
-    els.sort.value = s.sort || "deadline-asc";
+    els.sort.value = s.sort || "deadline-desc";
     els.budget.value = s.budget || "";
     els.deadline.value = s.deadlineWindow ?? "";
     els.retender.value = s.retender || "";
@@ -567,7 +567,14 @@
       return true;
     });
 
-    if (s.sort === "deadline-asc") {
+    if (s.sort === "deadline-desc") {
+      filtered.sort((a, b) => {
+        if (!a.deadline && !b.deadline) return a.periodStart < b.periodStart ? 1 : -1;
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return b.deadline.localeCompare(a.deadline);
+      });
+    } else if (s.sort === "deadline-asc") {
       filtered.sort((a, b) => {
         if (!a.deadline && !b.deadline) return a.periodStart < b.periodStart ? 1 : -1;
         if (!a.deadline) return 1;
@@ -920,8 +927,8 @@
   // ---------- 事件 ----------
   function bindEvents() {
     $("btn-backup").addEventListener("click", exportBackup);
-    $("btn-my-source").addEventListener("click", () => { setFilterState({ profile: "my", deadlineWindow: "", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
-    $("btn-engineering").addEventListener("click", () => { setFilterState({ profile: "", attr: "工程類", budget: "100000000", deadlineWindow: "", sort: "deadline-asc", openOnly: true }); switchTab("all"); });
+    $("btn-my-source").addEventListener("click", () => { setFilterState({ profile: "my", deadlineWindow: "", sort: "deadline-desc", openOnly: true }); switchTab("all"); });
+    $("btn-engineering").addEventListener("click", () => { setFilterState({ profile: "", attr: "工程類", budget: "100000000", deadlineWindow: "", sort: "deadline-desc", openOnly: true }); switchTab("all"); });
     document.querySelectorAll("[data-urgent-window]").forEach((button) => {
       button.addEventListener("click", () => {
         setFilterState({ profile: "", deadlineWindow: button.dataset.urgentWindow === "today" ? "0-0" : "1-1", sort: "deadline-asc", openOnly: true });
@@ -931,7 +938,7 @@
     });
     document.querySelectorAll("[data-qualification]").forEach((button) => {
       button.addEventListener("click", () => {
-        setFilterState({ profile: "", qualification: button.dataset.qualification, deadlineWindow: "", sort: "deadline-asc", openOnly: true });
+        setFilterState({ profile: "", qualification: button.dataset.qualification, deadlineWindow: "", sort: "deadline-desc", openOnly: true });
         switchTab("all");
         $("results-heading").scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -1134,7 +1141,7 @@
       els.banner.hidden = false; els.banner.className = "sync-banner warn";
       els.banner.textContent = "目前可投標資料無法載入或未通過驗證，以下改顯示歷史資料；不代表目前沒有標案。請重新整理或核對官方網站。";
     }
-    setFilterState(hasOpen ? { profile: "", deadlineWindow: "", regionIncludeUnknown: true, openOnly: true, sort: "deadline-asc" } : { profile: "", deadlineWindow: "", openOnly: false });
+    setFilterState(hasOpen ? { profile: "", deadlineWindow: "", regionIncludeUnknown: true, openOnly: true, sort: "deadline-desc" } : { profile: "", deadlineWindow: "", openOnly: false });
     await applyFilters();
     hydrateRetenderStatuses();
   }
